@@ -1,12 +1,22 @@
 "use client";
+
 import * as React from "react";
 
-
 import { MobileShell } from "@/components/layout/mobile-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import {
   CreditCard,
@@ -19,6 +29,7 @@ import {
   ChevronDown,
   ChevronUp,
   AlertTriangle,
+  Landmark,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -27,23 +38,28 @@ import {
   type IBANPayment,
   type IyzicoSubscription,
 } from "@/lib/mock-data";
+import { IbanDetailsForm } from "@/components/payments/iban-details-form";
+import { PaymentActionModal } from "@/components/payments/payment-action-modal";
 
 // ─── Status helpers ────────────────────────────────────────────────────────────
 
 const statusConfig = {
   pending: {
     label: "Bekliyor",
-    color: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+    color:
+      "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
     icon: Clock,
   },
   approved: {
     label: "Onaylandı",
-    color: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
+    color:
+      "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
     icon: CheckCircle2,
   },
   rejected: {
     label: "Reddedildi",
-    color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+    color:
+      "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
     icon: XCircle,
   },
 } as const;
@@ -86,16 +102,14 @@ function formatTime(iso: string) {
   });
 }
 
-// ─── IBAN Payment Card ─────────────────────────────────────────────────────────
+// ─── IBAN Payment Card (list item) ─────────────────────────────────────────────
 
 function IBANPaymentCard({
   payment,
-  onApprove,
-  onReject,
+  onSelect,
 }: {
   payment: IBANPayment;
-  onApprove: (id: string) => void;
-  onReject: (id: string) => void;
+  onSelect: (id: string) => void;
 }) {
   const [expanded, setExpanded] = React.useState(false);
   const status = statusConfig[payment.status];
@@ -115,7 +129,10 @@ function IBANPaymentCard({
                 <span className="font-medium text-sm truncate">
                   {payment.guest_name}
                 </span>
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">
+                <Badge
+                  variant="outline"
+                  className="text-[10px] px-1.5 py-0 shrink-0"
+                >
                   {status.label}
                 </Badge>
               </div>
@@ -168,14 +185,16 @@ function IBANPaymentCard({
             <div>
               <span className="text-muted-foreground">Gönderim</span>
               <p className="font-medium">
-                {formatDate(payment.submitted_at)} {formatTime(payment.submitted_at)}
+                {formatDate(payment.submitted_at)}{" "}
+                {formatTime(payment.submitted_at)}
               </p>
             </div>
             {payment.reviewed_at && (
               <div>
                 <span className="text-muted-foreground">İnceleme</span>
                 <p className="font-medium">
-                  {formatDate(payment.reviewed_at)} {formatTime(payment.reviewed_at)}
+                  {formatDate(payment.reviewed_at)}{" "}
+                  {formatTime(payment.reviewed_at)}
                 </p>
               </div>
             )}
@@ -189,32 +208,18 @@ function IBANPaymentCard({
           )}
 
           {payment.status === "pending" && (
-            <div className="flex gap-2 pt-1">
-              <Button
-                size="sm"
-                variant="default"
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onApprove(payment.id);
-                }}
-              >
-                <CheckCircle2 className="size-3.5" />
-                Onayla
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                className="flex-1"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onReject(payment.id);
-                }}
-              >
-                <XCircle className="size-3.5" />
-                Reddet
-              </Button>
-            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(payment.id);
+              }}
+            >
+              <CreditCard className="size-3.5" />
+              Ödeme İşlemi Yap
+            </Button>
           )}
         </div>
       )}
@@ -258,7 +263,9 @@ function IyzicoSubscriptionCard({ sub }: { sub: IyzicoSubscription }) {
           <div className="text-right">
             <p className="text-lg font-bold">
               ₺{sub.amount.toLocaleString("tr-TR")}
-              <span className="text-xs font-normal text-muted-foreground">/ay</span>
+              <span className="text-xs font-normal text-muted-foreground">
+                /ay
+              </span>
             </p>
           </div>
         </div>
@@ -268,7 +275,9 @@ function IyzicoSubscriptionCard({ sub }: { sub: IyzicoSubscription }) {
         <div className="grid grid-cols-2 gap-3 text-xs">
           <div>
             <span className="text-muted-foreground">Sonraki Fatura</span>
-            <p className="font-medium mt-0.5">{formatDate(sub.next_billing_date)}</p>
+            <p className="font-medium mt-0.5">
+              {formatDate(sub.next_billing_date)}
+            </p>
           </div>
           <div>
             <span className="text-muted-foreground">Kalan Gün</span>
@@ -276,7 +285,9 @@ function IyzicoSubscriptionCard({ sub }: { sub: IyzicoSubscription }) {
           </div>
           <div>
             <span className="text-muted-foreground">Kart</span>
-            <p className="font-medium mt-0.5">···· {sub.payment_method_last4}</p>
+            <p className="font-medium mt-0.5">
+              ···· {sub.payment_method_last4}
+            </p>
           </div>
           <div>
             <span className="text-muted-foreground">Otomatik Yenileme</span>
@@ -342,12 +353,24 @@ function PaymentSummaryStrip({ payments }: { payments: IBANPayment[] }) {
 
 export default function PaymentsPage() {
   const [isMounted, setIsMounted] = React.useState(false);
-  React.useEffect(() => { setIsMounted(true); }, []);
-  if (!isMounted) return null;
-  const [payments, setPayments] = React.useState(mockIBANPayments);
-  const [filter, setFilter] = React.useState<"all" | "pending" | "approved" | "rejected">("all");
+  React.useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
-  const handleApprove = (id: string) => {
+  const [payments, setPayments] = React.useState(mockIBANPayments);
+  const [filter, setFilter] = React.useState<
+    "all" | "pending" | "approved" | "rejected"
+  >("all");
+  const [selectedPaymentId, setSelectedPaymentId] = React.useState<
+    string | null
+  >(null);
+
+  // Find the currently selected payment
+  const selectedPayment = selectedPaymentId
+    ? payments.find((p) => p.id === selectedPaymentId) ?? null
+    : null;
+
+  const handleApprove = (id: string, notes?: string) => {
     setPayments((prev) =>
       prev.map((p) =>
         p.id === id
@@ -356,14 +379,15 @@ export default function PaymentsPage() {
               status: "approved" as const,
               reviewed_at: new Date().toISOString(),
               reviewed_by: "admin",
-              notes: "Manuel onaylandı.",
+              notes: notes ?? "Manuel onaylandı.",
             }
           : p
       )
     );
+    setSelectedPaymentId(null);
   };
 
-  const handleReject = (id: string) => {
+  const handleReject = (id: string, notes?: string) => {
     setPayments((prev) =>
       prev.map((p) =>
         p.id === id
@@ -372,76 +396,129 @@ export default function PaymentsPage() {
               status: "rejected" as const,
               reviewed_at: new Date().toISOString(),
               reviewed_by: "admin",
-              notes: "Manuel reddedildi.",
+              notes: notes ?? "Manuel reddedildi.",
             }
           : p
       )
     );
+    setSelectedPaymentId(null);
   };
 
-  const filtered = filter === "all" ? payments : payments.filter((p) => p.status === filter);
+  const filtered =
+    filter === "all"
+      ? payments
+      : payments.filter((p) => p.status === filter);
+
+  const pendingCount = payments.filter((p) => p.status === "pending").length;
+
+  if (!isMounted) return null;
 
   return (
     <MobileShell>
       <div className="flex flex-col gap-4 pb-4">
-        {/* Page header */}
+        {/* ── Page header ─────────────────────────────────────────── */}
         <div className="flex items-center gap-2">
           <CreditCard className="size-5 text-primary" />
           <div>
             <h2 className="text-lg font-semibold tracking-tight">Ödemeler</h2>
             <p className="text-xs text-muted-foreground">
-              IBAN havale takibi ve abonelik durumu
+              IBAN yönetimi, havale takibi ve abonelik durumu
             </p>
           </div>
         </div>
 
-        {/* IYZICO Subscription */}
-        <IyzicoSubscriptionCard sub={mockIyzicoSubscription} />
-
-        <Separator />
-
-        {/* IBAN Summary */}
-        <div>
-          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <Banknote className="size-4 text-primary" />
-            IBAN Havale / EFT Takibi
-          </h3>
-          <PaymentSummaryStrip payments={payments} />
-        </div>
-
-        {/* Filter tabs */}
-        <Tabs
-          defaultValue="all"
-          onValueChange={(v) =>
-            setFilter(v as "all" | "pending" | "approved" | "rejected")
-          }
-        >
+        {/* ── Main tabs ───────────────────────────────────────────── */}
+        <Tabs defaultValue="iban" onValueChange={() => setSelectedPaymentId(null)}>
           <TabsList className="w-full">
-            <TabsTrigger value="all">Tümü</TabsTrigger>
-            <TabsTrigger value="pending">Bekleyen</TabsTrigger>
-            <TabsTrigger value="approved">Onaylı</TabsTrigger>
-            <TabsTrigger value="rejected">Reddedilen</TabsTrigger>
+            <TabsTrigger value="iban">
+              <Landmark className="size-3.5" />
+              IBAN Hesaplarım
+            </TabsTrigger>
+            <TabsTrigger value="tracking">
+              <Banknote className="size-3.5" />
+              Ödeme Takibi
+              {pendingCount > 0 && (
+                <span className="ml-1 inline-flex size-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-white">
+                  {pendingCount}
+                </span>
+              )}
+            </TabsTrigger>
           </TabsList>
-        </Tabs>
 
-        {/* Payment list */}
-        <div className="flex flex-col gap-2">
-          {filtered.length === 0 ? (
-            <div className="text-center py-8 text-sm text-muted-foreground">
-              <RefreshCw className="size-8 mx-auto mb-2 opacity-50" />
-              <p>Bu kategoride ödeme bulunamadı.</p>
+          {/* ── Tab 1: IBAN Management ──────────────────────────── */}
+          <TabsContent value="iban" className="mt-3">
+            <div className="flex flex-col gap-4">
+              {/* IBAN accounts form */}
+              <IbanDetailsForm />
+
+              <Separator />
+
+              {/* IYZICO Subscription */}
+              <IyzicoSubscriptionCard sub={mockIyzicoSubscription} />
             </div>
-          ) : (
-            filtered.map((payment) => (
-              <IBANPaymentCard
-                key={payment.id}
-                payment={payment}
-                onApprove={handleApprove}
-                onReject={handleReject}
-              />
-            ))
-          )}
-        </div>
+          </TabsContent>
+
+          {/* ── Tab 2: Payment Tracking ─────────────────────────── */}
+          <TabsContent value="tracking" className="mt-3">
+            <div className="flex flex-col gap-4">
+              {/* Detail view when a payment is selected */}
+              {selectedPayment ? (
+                <PaymentActionModal
+                  payment={selectedPayment}
+                  onApprove={handleApprove}
+                  onReject={handleReject}
+                  onClose={() => setSelectedPaymentId(null)}
+                />
+              ) : (
+                <>
+                  {/* Summary */}
+                  <div>
+                    <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                      <Banknote className="size-4 text-primary" />
+                      IBAN Havale / EFT Takibi
+                    </h3>
+                    <PaymentSummaryStrip payments={payments} />
+                  </div>
+
+                  {/* Filter tabs */}
+                  <Tabs
+                    defaultValue="all"
+                    onValueChange={(v) =>
+                      setFilter(
+                        v as "all" | "pending" | "approved" | "rejected"
+                      )
+                    }
+                  >
+                    <TabsList className="w-full">
+                      <TabsTrigger value="all">Tümü</TabsTrigger>
+                      <TabsTrigger value="pending">Bekleyen</TabsTrigger>
+                      <TabsTrigger value="approved">Onaylı</TabsTrigger>
+                      <TabsTrigger value="rejected">Reddedilen</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+
+                  {/* Payment list */}
+                  <div className="flex flex-col gap-2">
+                    {filtered.length === 0 ? (
+                      <div className="text-center py-8 text-sm text-muted-foreground">
+                        <RefreshCw className="size-8 mx-auto mb-2 opacity-50" />
+                        <p>Bu kategoride ödeme bulunamadı.</p>
+                      </div>
+                    ) : (
+                      filtered.map((payment) => (
+                        <IBANPaymentCard
+                          key={payment.id}
+                          payment={payment}
+                          onSelect={setSelectedPaymentId}
+                        />
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </MobileShell>
   );

@@ -270,6 +270,160 @@ export interface DashboardStats {
   weeklyRevenue?: { day: string; revenue: number }[];
 }
 
+// ─── IBAN Management Types ─────────────────────────────────────────────────
+
+export interface BusinessIBAN {
+  id: string;
+  tenant_id: string;
+  bank_name: string;
+  account_holder: string;
+  iban: string;
+  currency: string;
+  is_default: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IBANPaymentTracking {
+  id: string;
+  tenant_id: string;
+  reservation_id: string;
+  guest_name: string;
+  guest_phone: string;
+  amount: number;
+  currency: string;
+  iban_id: string;
+  sender_iban_last4: string;
+  reference_code: string;
+  status: PaymentTrackingStatus;
+  submitted_at: string;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  notes: string | null;
+  room_name: string;
+  check_in_date: string;
+  check_out_date: string;
+}
+
+// ─── Onboarding Types ─────────────────────────────────────────────────────
+
+export type OnboardingStep = 
+  | "business_info"
+  | "whatsapp_setup"
+  | "units_setup"
+  | "pricing_setup"
+  | "complete";
+
+export interface OnboardingBusinessInfo {
+  business_name: string;
+  business_type: "bungalow" | "hotel" | "pension" | "apartment";
+  address: string;
+  city: string;
+  phone: string;
+  email: string;
+}
+
+export interface OnboardingWhatsApp {
+  phone_number: string;
+  instance_name: string;
+  webhook_url?: string;
+  is_connected: boolean;
+}
+
+export interface OnboardingUnit {
+  name: string;
+  description: string;
+  capacity: number;
+  base_price: number;
+  weekend_price: number | null;
+  peak_price: number | null;
+  amenities: string[];
+  is_active: boolean;
+}
+
+export interface OnboardingPricing {
+  currency: string;
+  deposit_percentage: number;
+  cancellation_policy: string;
+  min_stay_nights: number;
+  check_in_time: string;
+  check_out_time: string;
+}
+
+export interface OnboardingState {
+  step: OnboardingStep;
+  tenant_id: string;
+  business_info: OnboardingBusinessInfo | null;
+  whatsapp: OnboardingWhatsApp | null;
+  units: OnboardingUnit[];
+  pricing: OnboardingPricing | null;
+  completed: boolean;
+}
+
+// ─── Database Row Types for Onboarding ────────────────────────────────────
+
+export interface TenantRow {
+  id: string;
+  business_name: string;
+  business_type: string;
+  owner_name: string;
+  owner_email: string;
+  owner_phone: string;
+  whatsapp_number: string | null;
+  evolution_instance_id: string | null;
+  subscription_status: string;
+  subscription_plan: string | null;
+  onboarding_completed: boolean;
+  onboarding_completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UnitRow {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description: string | null;
+  capacity: number;
+  base_price: number;
+  weekend_price: number | null;
+  peak_price: number | null;
+  amenities: string[];
+  images: string[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AvailabilityRow {
+  id: string;
+  unit_id: string;
+  date: string;
+  status: "available" | "booked" | "blocked" | "maintenance";
+  price_override: number | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PricingRuleRow {
+  id: string;
+  tenant_id: string;
+  name: string;
+  rule_type: "seasonal" | "weekday" | "weekend" | "minimum_stay" | "early_bird" | "last_minute";
+  start_date: string | null;
+  end_date: string | null;
+  days_of_week: number[] | null;
+  adjustment_type: "percentage" | "fixed";
+  adjustment_value: number;
+  min_nights: number | null;
+  priority: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 // ─── Composite / Join Types ──────────────────────────────────────────────────
 
 export interface ConversationRowWithMessages extends ConversationRow {
