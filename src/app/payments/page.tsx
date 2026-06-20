@@ -1,0 +1,448 @@
+"use client";
+import * as React from "react";
+
+
+import { MobileShell } from "@/components/layout/mobile-shell";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
+import {
+  CreditCard,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Banknote,
+  RefreshCw,
+  Shield,
+  ChevronDown,
+  ChevronUp,
+  AlertTriangle,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  mockIBANPayments,
+  mockIyzicoSubscription,
+  type IBANPayment,
+  type IyzicoSubscription,
+} from "@/lib/mock-data";
+
+// ─── Status helpers ────────────────────────────────────────────────────────────
+
+const statusConfig = {
+  pending: {
+    label: "Bekliyor",
+    color: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+    icon: Clock,
+  },
+  approved: {
+    label: "Onaylandı",
+    color: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
+    icon: CheckCircle2,
+  },
+  rejected: {
+    label: "Reddedildi",
+    color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+    icon: XCircle,
+  },
+} as const;
+
+const subStatusConfig = {
+  active: {
+    label: "Aktif",
+    color: "text-emerald-600",
+    bgColor: "bg-emerald-50 dark:bg-emerald-900/20",
+  },
+  past_due: {
+    label: "Gecikmiş",
+    color: "text-amber-600",
+    bgColor: "bg-amber-50 dark:bg-amber-900/20",
+  },
+  cancelled: {
+    label: "İptal",
+    color: "text-red-600",
+    bgColor: "bg-red-50 dark:bg-red-900/20",
+  },
+  trial: {
+    label: "Deneme",
+    color: "text-blue-600",
+    bgColor: "bg-blue-50 dark:bg-blue-900/20",
+  },
+} as const;
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString("tr-TR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("tr-TR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+// ─── IBAN Payment Card ─────────────────────────────────────────────────────────
+
+function IBANPaymentCard({
+  payment,
+  onApprove,
+  onReject,
+}: {
+  payment: IBANPayment;
+  onApprove: (id: string) => void;
+  onReject: (id: string) => void;
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+  const status = statusConfig[payment.status];
+  const StatusIcon = status.icon;
+
+  return (
+    <Card className="overflow-hidden">
+      <button
+        className="w-full text-left"
+        onClick={() => setExpanded(!expanded)}
+        type="button"
+      >
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="font-medium text-sm truncate">
+                  {payment.guest_name}
+                </span>
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">
+                  {status.label}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {payment.room_name} · {formatDate(payment.check_in_date)}
+              </p>
+              <div className="flex items-center gap-1.5 mt-2">
+                <Banknote className="size-3.5 text-primary" />
+                <span className="font-semibold text-base">
+                  ₺{payment.amount.toLocaleString("tr-TR")}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  ····{payment.iban_last4}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col items-end gap-1">
+              <StatusIcon
+                className={cn(
+                  "size-4",
+                  payment.status === "pending" && "text-amber-500",
+                  payment.status === "approved" && "text-emerald-500",
+                  payment.status === "rejected" && "text-red-500"
+                )}
+              />
+              {expanded ? (
+                <ChevronUp className="size-3.5 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="size-3.5 text-muted-foreground" />
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-border/50 bg-muted/30 px-4 py-3 space-y-3">
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <span className="text-muted-foreground">Telefon</span>
+              <p className="font-medium">{payment.guest_phone}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Referans</span>
+              <p className="font-medium font-mono text-[11px]">
+                {payment.reference_code}
+              </p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Gönderim</span>
+              <p className="font-medium">
+                {formatDate(payment.submitted_at)} {formatTime(payment.submitted_at)}
+              </p>
+            </div>
+            {payment.reviewed_at && (
+              <div>
+                <span className="text-muted-foreground">İnceleme</span>
+                <p className="font-medium">
+                  {formatDate(payment.reviewed_at)} {formatTime(payment.reviewed_at)}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {payment.notes && (
+            <div className="text-xs">
+              <span className="text-muted-foreground">Not</span>
+              <p className="mt-0.5">{payment.notes}</p>
+            </div>
+          )}
+
+          {payment.status === "pending" && (
+            <div className="flex gap-2 pt-1">
+              <Button
+                size="sm"
+                variant="default"
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onApprove(payment.id);
+                }}
+              >
+                <CheckCircle2 className="size-3.5" />
+                Onayla
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                className="flex-1"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReject(payment.id);
+                }}
+              >
+                <XCircle className="size-3.5" />
+                Reddet
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ─── IYZICO Subscription Card ──────────────────────────────────────────────────
+
+function IyzicoSubscriptionCard({ sub }: { sub: IyzicoSubscription }) {
+  const status = subStatusConfig[sub.status];
+  const daysLeft = Math.ceil(
+    (new Date(sub.current_period_end).getTime() - Date.now()) / 86400000
+  );
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Shield className="size-5 text-primary" />
+          IYZICO Abonelik
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-semibold">{sub.plan_name}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+                  status.bgColor,
+                  status.color
+                )}
+              >
+                <span className="size-1.5 rounded-full bg-current" />
+                {status.label}
+              </span>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-lg font-bold">
+              ₺{sub.amount.toLocaleString("tr-TR")}
+              <span className="text-xs font-normal text-muted-foreground">/ay</span>
+            </p>
+          </div>
+        </div>
+
+        <Separator />
+
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <span className="text-muted-foreground">Sonraki Fatura</span>
+            <p className="font-medium mt-0.5">{formatDate(sub.next_billing_date)}</p>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Kalan Gün</span>
+            <p className="font-medium mt-0.5">{daysLeft} gün</p>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Kart</span>
+            <p className="font-medium mt-0.5">···· {sub.payment_method_last4}</p>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Otomatik Yenileme</span>
+            <p className="font-medium mt-0.5">
+              {sub.auto_renew ? "✓ Açık" : "✕ Kapalı"}
+            </p>
+          </div>
+        </div>
+
+        {sub.status === "past_due" && (
+          <div className="flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 p-3 text-xs text-amber-800 dark:text-amber-400">
+            <AlertTriangle className="size-4 shrink-0 mt-0.5" />
+            <p>
+              Ödemeniz gecikmiş. Lütfen kart bilgilerinizi güncelleyin veya
+              destek ile iletişime geçin.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Summary Strip ─────────────────────────────────────────────────────────────
+
+function PaymentSummaryStrip({ payments }: { payments: IBANPayment[] }) {
+  const pending = payments.filter((p) => p.status === "pending");
+  const approved = payments.filter((p) => p.status === "approved");
+  const pendingTotal = pending.reduce((s, p) => s + p.amount, 0);
+  const approvedTotal = approved.reduce((s, p) => s + p.amount, 0);
+
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 p-3 text-center ring-1 ring-amber-200 dark:ring-amber-800">
+        <p className="text-2xl font-bold text-amber-700 dark:text-amber-400">
+          {pending.length}
+        </p>
+        <p className="text-[10px] text-amber-600 dark:text-amber-500 mt-0.5">
+          Bekleyen
+        </p>
+      </div>
+      <div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 p-3 text-center ring-1 ring-emerald-200 dark:ring-emerald-800">
+        <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
+          {approved.length}
+        </p>
+        <p className="text-[10px] text-emerald-600 dark:text-emerald-500 mt-0.5">
+          Onaylı
+        </p>
+      </div>
+      <div className="rounded-xl bg-teal-50 dark:bg-teal-900/20 p-3 text-center ring-1 ring-teal-200 dark:ring-teal-800">
+        <p className="text-lg font-bold text-teal-700 dark:text-teal-400">
+          ₺{(pendingTotal + approvedTotal).toLocaleString("tr-TR")}
+        </p>
+        <p className="text-[10px] text-teal-600 dark:text-teal-500 mt-0.5">
+          Toplam
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Page ──────────────────────────────────────────────────────────────────────
+
+export default function PaymentsPage() {
+  const [isMounted, setIsMounted] = React.useState(false);
+  React.useEffect(() => { setIsMounted(true); }, []);
+  if (!isMounted) return null;
+  const [payments, setPayments] = React.useState(mockIBANPayments);
+  const [filter, setFilter] = React.useState<"all" | "pending" | "approved" | "rejected">("all");
+
+  const handleApprove = (id: string) => {
+    setPayments((prev) =>
+      prev.map((p) =>
+        p.id === id
+          ? {
+              ...p,
+              status: "approved" as const,
+              reviewed_at: new Date().toISOString(),
+              reviewed_by: "admin",
+              notes: "Manuel onaylandı.",
+            }
+          : p
+      )
+    );
+  };
+
+  const handleReject = (id: string) => {
+    setPayments((prev) =>
+      prev.map((p) =>
+        p.id === id
+          ? {
+              ...p,
+              status: "rejected" as const,
+              reviewed_at: new Date().toISOString(),
+              reviewed_by: "admin",
+              notes: "Manuel reddedildi.",
+            }
+          : p
+      )
+    );
+  };
+
+  const filtered = filter === "all" ? payments : payments.filter((p) => p.status === filter);
+
+  return (
+    <MobileShell>
+      <div className="flex flex-col gap-4 pb-4">
+        {/* Page header */}
+        <div className="flex items-center gap-2">
+          <CreditCard className="size-5 text-primary" />
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">Ödemeler</h2>
+            <p className="text-xs text-muted-foreground">
+              IBAN havale takibi ve abonelik durumu
+            </p>
+          </div>
+        </div>
+
+        {/* IYZICO Subscription */}
+        <IyzicoSubscriptionCard sub={mockIyzicoSubscription} />
+
+        <Separator />
+
+        {/* IBAN Summary */}
+        <div>
+          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+            <Banknote className="size-4 text-primary" />
+            IBAN Havale / EFT Takibi
+          </h3>
+          <PaymentSummaryStrip payments={payments} />
+        </div>
+
+        {/* Filter tabs */}
+        <Tabs
+          defaultValue="all"
+          onValueChange={(v) =>
+            setFilter(v as "all" | "pending" | "approved" | "rejected")
+          }
+        >
+          <TabsList className="w-full">
+            <TabsTrigger value="all">Tümü</TabsTrigger>
+            <TabsTrigger value="pending">Bekleyen</TabsTrigger>
+            <TabsTrigger value="approved">Onaylı</TabsTrigger>
+            <TabsTrigger value="rejected">Reddedilen</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        {/* Payment list */}
+        <div className="flex flex-col gap-2">
+          {filtered.length === 0 ? (
+            <div className="text-center py-8 text-sm text-muted-foreground">
+              <RefreshCw className="size-8 mx-auto mb-2 opacity-50" />
+              <p>Bu kategoride ödeme bulunamadı.</p>
+            </div>
+          ) : (
+            filtered.map((payment) => (
+              <IBANPaymentCard
+                key={payment.id}
+                payment={payment}
+                onApprove={handleApprove}
+                onReject={handleReject}
+              />
+            ))
+          )}
+        </div>
+      </div>
+    </MobileShell>
+  );
+}

@@ -1,0 +1,61 @@
+import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
+import { Toaster } from "@/components/ui/sonner";
+import { Providers } from "@/components/providers";
+import "./globals.css";
+
+const inter = Inter({
+  variable: "--font-sans",
+  subsets: ["latin", "latin-ext"],
+  display: "swap",
+});
+
+export const metadata: Metadata = {
+  title: "Bungalov Yönetim Paneli",
+  description:
+    "Bungalov işletmeniz için yapay zeka destekli rezervasyon yönetim paneli.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Bungalov",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#0f766e",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="tr"
+      className={`${inter.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
+      <head>
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta
+          name="apple-mobile-web-app-status-bar-style"
+          content="black-translucent"
+        />
+      </head>
+      <body className="min-h-full flex flex-col bg-background font-sans">
+        <Providers>
+          {children}
+        </Providers>
+        <Toaster position="top-center" richColors closeButton />
+      </body>
+    </html>
+  );
+}
