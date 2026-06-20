@@ -33,15 +33,15 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Required for Next.js inline scripts & HMR
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.iyzipay.com", // Next.js + IYZICO checkout scripts
       "style-src 'self' 'unsafe-inline'", // Required for Tailwind/shadcn inline styles
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in", // Supabase realtime + REST
-      "frame-src 'none'",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in https://sandbox-api.iyzipay.com https://api.iyzipay.com", // Supabase realtime + REST + IYZICO
+      "frame-src https://sandbox-api.iyzipay.com https://api.iyzipay.com https://*.iyzipay.com", // IYZICO checkout iframe
       "object-src 'none'",
       "base-uri 'self'",
-      "form-action 'self'",
+      "form-action 'self' https://*.iyzipay.com", // IYZICO payment forms
       "frame-ancestors 'none'",
       "upgrade-insecure-requests",
     ].join("; "),
