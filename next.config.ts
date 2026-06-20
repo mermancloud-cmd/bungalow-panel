@@ -65,7 +65,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  output: "export",
   poweredByHeader: false,
   turbopack: {},
   typescript: {
