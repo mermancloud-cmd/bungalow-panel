@@ -1,146 +1,97 @@
 "use client";
 import * as React from "react";
 
-
 import { MobileShell } from "@/components/layout/mobile-shell";
-import { SummaryCards } from "@/components/dashboard/summary-cards";
-import { RevenueChart } from "@/components/dashboard/revenue-chart";
-import { AIStatusCard } from "@/components/dashboard/ai-status-card";
-import { RecentActivity } from "@/components/dashboard/recent-activity";
-import { SubscriptionStatusCard } from "@/components/subscription/subscription-status";
-import { useDashboardStats } from "@/hooks/use-dashboard-stats";
-import { Card, CardContent } from "@/components/ui/card";
-import { Banknote, CreditCard, BarChart3, ArrowRight, Shield } from "lucide-react";
-import Link from "next/link";
+import { ConversationMetrics } from "@/components/dashboard/conversation-metrics";
+import { InquiryBreakdownCard } from "@/components/dashboard/inquiry-breakdown";
+import { AIResolutionCard } from "@/components/dashboard/ai-resolution-card";
+import { RecentConversationsCard } from "@/components/dashboard/recent-conversations";
+import { RevenueIndicatorsCard } from "@/components/dashboard/revenue-indicators";
+import { QuickActionsCard } from "@/components/dashboard/quick-actions";
+import { useAnalyticsDashboard } from "@/hooks/use-analytics-dashboard";
+import { Banknote, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function DashboardPage() {
   const [isMounted, setIsMounted] = React.useState(false);
-  React.useEffect(() => { setIsMounted(true); }, []);
-  const { data } = useDashboardStats();
-
-  // Fetch subscription status
-  const [subStatus, setSubStatus] = React.useState<{
-    status: string;
-    plan?: string;
-    trialEnd?: string;
-    currentPeriodEnd?: string;
-    _mock?: boolean;
-  } | null>(null);
-
   React.useEffect(() => {
-    if (!isMounted) return;
-    fetch("/api/subscription/status?tenant_id=demo-tenant")
-      .then((r) => r.ok ? r.json() : null)
-      .then((d) => {
-        if (d) setSubStatus(d);
-        else {
-          // Graceful fallback for dev
-          setSubStatus({
-            status: "trial",
-            plan: "pro",
-            trialEnd: new Date(Date.now() + 7 * 86400000).toISOString(),
-            _mock: true,
-          });
-        }
-      })
-      .catch(() => {
-        setSubStatus({
-          status: "trial",
-          plan: "pro",
-          trialEnd: new Date(Date.now() + 7 * 86400000).toISOString(),
-          _mock: true,
-        });
-      });
-  }, [isMounted]);
+    setIsMounted(true);
+  }, []);
+
+  const { data, isLoading, isFetching, refetch } = useAnalyticsDashboard();
 
   if (!isMounted) return null;
 
   return (
-    <MobileShell notificationCount={data?.pending_actions ?? 0}>
+    <MobileShell notificationCount={data?.revenue_indicators?.pending_iban_count ?? 0}>
       <div className="flex flex-col gap-4 pb-4">
         {/* Page header */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold tracking-tight">Gösterge</h2>
+            <h2 className="text-lg font-semibold tracking-tight">Gösterge Paneli</h2>
             <p className="text-xs text-muted-foreground">
-              Tesislerinizin anlık durumu
+              AI performansı ve iş metrikleri
             </p>
           </div>
-          {data && (
-            <div className="flex items-center gap-1.5 rounded-lg bg-teal-50 dark:bg-teal-900/20 px-2.5 py-1.5 ring-1 ring-teal-200 dark:ring-teal-800">
-              <Banknote className="size-3.5 text-teal-600" />
-              <span className="text-sm font-semibold text-teal-700 dark:text-teal-400">
-                ₺{(data.revenue_today ?? 0).toLocaleString("tr-TR")}
-              </span>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {data?.revenue_indicators && (
+              <div className="flex items-center gap-1.5 rounded-lg bg-teal-50 dark:bg-teal-900/20 px-2.5 py-1.5 ring-1 ring-teal-200 dark:ring-teal-800">
+                <Banknote className="size-3.5 text-teal-600" />
+                <span className="text-sm font-semibold text-teal-700 dark:text-teal-400">
+                  ₺{(data.revenue_indicators.today_revenue ?? 0).toLocaleString("tr-TR")}
+                </span>
+              </div>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              title="Yenile"
+            >
+              <RefreshCw
+                className={`size-3.5 text-muted-foreground ${isFetching ? "animate-spin" : ""}`}
+              />
+            </Button>
+          </div>
         </div>
 
-        {/* Summary cards — 2x2 grid */}
-        <SummaryCards />
+        {/* §1 — Conversation metrics: today's count, response rate, avg response time */}
+        <ConversationMetrics
+          metrics={data?.conversation_metrics}
+          isLoading={isLoading}
+        />
 
-        {/* Subscription status */}
-        {subStatus && (
-          <SubscriptionStatusCard
-            status={subStatus.status as "none" | "trial" | "active" | "past_due" | "cancelled" | "expired"}
-            planId={subStatus.plan}
-            trialEnd={subStatus.trialEnd}
-            currentPeriodEnd={subStatus.currentPeriodEnd}
-            isMock={subStatus._mock}
-          />
-        )}
+        {/* §2 — Guest inquiry breakdown by category */}
+        <InquiryBreakdownCard
+          data={data?.inquiry_breakdown}
+          isLoading={isLoading}
+        />
 
-        {/* Quick links */}
-        <div className="grid grid-cols-3 gap-3">
-          <Link href="/payments">
-            <Card size="sm" className="cursor-pointer hover:ring-1 hover:ring-primary/30 transition-all">
-              <CardContent className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="flex size-8 items-center justify-center rounded-lg bg-amber-50 dark:bg-amber-900/20">
-                    <CreditCard className="size-4 text-amber-600" />
-                  </div>
-                  <span className="text-xs font-medium">Ödemeler</span>
-                </div>
-                <ArrowRight className="size-3.5 text-muted-foreground" />
-              </CardContent>
-            </Card>
-          </Link>
-          <Link href="/analytics">
-            <Card size="sm" className="cursor-pointer hover:ring-1 hover:ring-primary/30 transition-all">
-              <CardContent className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
-                    <BarChart3 className="size-4 text-emerald-600" />
-                  </div>
-                  <span className="text-xs font-medium">Analitik</span>
-                </div>
-                <ArrowRight className="size-3.5 text-muted-foreground" />
-              </CardContent>
-            </Card>
-          </Link>
-          <Link href="/subscription">
-            <Card size="sm" className="cursor-pointer hover:ring-1 hover:ring-primary/30 transition-all">
-              <CardContent className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="flex size-8 items-center justify-center rounded-lg bg-teal-50 dark:bg-teal-900/20">
-                    <Shield className="size-4 text-teal-600" />
-                  </div>
-                  <span className="text-xs font-medium">Abonelik</span>
-                </div>
-                <ArrowRight className="size-3.5 text-muted-foreground" />
-              </CardContent>
-            </Card>
-          </Link>
-        </div>
+        {/* §3 — AI resolution rate */}
+        <AIResolutionCard
+          data={data?.ai_resolution}
+          isLoading={isLoading}
+        />
 
-        {/* Revenue chart */}
-        <RevenueChart />
+        {/* §4 — Recent conversations list with status badges */}
+        <RecentConversationsCard
+          conversations={data?.recent_conversations}
+          isLoading={isLoading}
+        />
 
-        {/* AI Status + Recent Activity */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <AIStatusCard />
-          <RecentActivity />
-        </div>
+        {/* §5 — Revenue indicators: pending IBAN, confirmed bookings */}
+        <RevenueIndicatorsCard
+          data={data?.revenue_indicators}
+          isLoading={isLoading}
+        />
+
+        {/* §6 — Quick action buttons: toggle AI, view DLQ errors, manage rooms */}
+        <QuickActionsCard
+          data={data?.quick_actions}
+          isLoading={isLoading}
+        />
       </div>
     </MobileShell>
   );

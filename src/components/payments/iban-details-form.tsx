@@ -19,40 +19,10 @@ import {
   Star,
   Copy,
   Check,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-// ─── Types ─────────────────────────────────────────────────────────────────────
-
-export interface OwnerIBAN {
-  id: string;
-  bank_name: string;
-  account_holder: string;
-  iban: string;
-  currency: string;
-  is_default: boolean;
-}
-
-// ─── Mock Data ─────────────────────────────────────────────────────────────────
-
-const mockOwnerIBANs: OwnerIBAN[] = [
-  {
-    id: "owner-iban-001",
-    bank_name: "Ziraat Bankası",
-    account_holder: "Merman Turizm Ltd. Şti.",
-    iban: "TR330001009000000000123456",
-    currency: "TRY",
-    is_default: true,
-  },
-  {
-    id: "owner-iban-002",
-    bank_name: "Garanti BBVA",
-    account_holder: "Merman Turizm Ltd. Şti.",
-    iban: "TR120006200100900000087654",
-    currency: "EUR",
-    is_default: false,
-  },
-];
+import type { OwnerIBAN, NewIBANInput } from "@/hooks/use-owner-ibans";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -72,10 +42,29 @@ const currencySymbol: Record<string, string> = {
 
 const supportedCurrencies = ["TRY", "EUR", "USD", "GBP"] as const;
 
+// ─── Props ─────────────────────────────────────────────────────────────────────
+
+interface IbanDetailsFormProps {
+  ibans: OwnerIBAN[];
+  isLoading?: boolean;
+  onAdd: (input: NewIBANInput) => void;
+  onSetDefault: (id: string) => void;
+  onDelete: (id: string, wasDefault: boolean) => void;
+  isAdding?: boolean;
+  isMutating?: boolean;
+}
+
 // ─── Component ─────────────────────────────────────────────────────────────────
 
-export function IbanDetailsForm() {
-  const [ibans, setIbans] = React.useState<OwnerIBAN[]>(mockOwnerIBANs);
+export function IbanDetailsForm({
+  ibans,
+  isLoading,
+  onAdd,
+  onSetDefault,
+  onDelete,
+  isAdding,
+  isMutating,
+}: IbanDetailsFormProps) {
   const [showAddForm, setShowAddForm] = React.useState(false);
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = React.useState<string | null>(null);
@@ -98,45 +87,25 @@ export function IbanDetailsForm() {
     const trimmed = newIban.replace(/\s/g, "").toUpperCase();
     if (!newBank.trim() || !newHolder.trim() || trimmed.length < 8) return;
 
-    const iban: OwnerIBAN = {
-      id: `owner-iban-${Date.now()}`,
+    onAdd({
       bank_name: newBank.trim(),
       account_holder: newHolder.trim(),
       iban: trimmed,
       currency: newCurrency,
-      is_default: ibans.length === 0,
-    };
-
-    setIbans((prev) => [...prev, iban]);
+    });
     resetForm();
   };
 
   const handleSetDefault = (id: string) => {
-    setIbans((prev) =>
-      prev.map((item) => ({
-        ...item,
-        is_default: item.id === id,
-      }))
-    );
+    onSetDefault(id);
   };
 
-  const handleDelete = (id: string) => {
-    if (deleteConfirmId !== id) {
-      setDeleteConfirmId(id);
+  const handleDelete = (iban: OwnerIBAN) => {
+    if (deleteConfirmId !== iban.id) {
+      setDeleteConfirmId(iban.id);
       return;
     }
-
-    setIbans((prev) => {
-      const filtered = prev.filter((item) => item.id !== id);
-      // Promote first remaining to default if we deleted the default
-      if (filtered.length > 0 && !filtered.some((i) => i.is_default)) {
-        return filtered.map((item, idx) => ({
-          ...item,
-          is_default: idx === 0,
-        }));
-      }
-      return filtered;
-    });
+    onDelete(iban.id, iban.is_default);
     setDeleteConfirmId(null);
   };
 
@@ -164,8 +133,15 @@ export function IbanDetailsForm() {
       </CardHeader>
 
       <CardContent className="space-y-3">
-        {/* ── Existing IBAN list ─────────────────────────────────────── */}
-        {ibans.length === 0 && (
+        {/* ── Loading state ─────────────────────────────────────────── */}
+        {isLoading && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          </div>
+        )}
+
+        {/* ── Empty state ───────────────────────────────────────────── */}
+        {!isLoading && ibans.length === 0 && (
           <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
             <Landmark className="size-8 mx-auto mb-2 opacity-40" />
             <p>Henüz IBAN hesabı eklenmemiş.</p>
@@ -175,114 +151,118 @@ export function IbanDetailsForm() {
           </div>
         )}
 
-        {ibans.map((iban) => (
-          <div
-            key={iban.id}
-            className={cn(
-              "rounded-lg border p-3 space-y-2.5 transition-colors",
-              iban.is_default
-                ? "border-primary/30 bg-primary/[0.03]"
-                : "border-border"
-            )}
-          >
-            {/* Row 1: bank name + badges */}
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <Landmark className="size-4 text-muted-foreground shrink-0" />
-                <span className="font-medium text-sm truncate">
-                  {iban.bank_name}
-                </span>
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                {iban.is_default && (
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-primary/20"
-                  >
-                    <Star className="size-2.5" />
-                    Varsayılan
-                  </Badge>
-                )}
-                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                  {currencySymbol[iban.currency] ?? iban.currency}{" "}
-                  {iban.currency}
-                </Badge>
-              </div>
-            </div>
-
-            {/* Row 2: account holder */}
-            <p className="text-xs text-muted-foreground pl-6">
-              {iban.account_holder}
-            </p>
-
-            {/* Row 3: masked IBAN + copy */}
-            <div className="flex items-center gap-2">
-              <code className="text-xs font-mono bg-muted rounded-md px-2.5 py-1.5 flex-1 tracking-wider text-center select-all">
-                {maskIBAN(iban.iban)}
-              </code>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => handleCopy(iban)}
-                title="IBAN numarasını kopyala"
-              >
-                {copiedId === iban.id ? (
-                  <Check className="size-3.5 text-emerald-500" />
-                ) : (
-                  <Copy className="size-3.5" />
-                )}
-              </Button>
-            </div>
-
-            {/* Row 4: actions */}
-            <div className="flex gap-1.5 pt-0.5">
-              {!iban.is_default && (
-                <Button
-                  variant="outline"
-                  size="xs"
-                  onClick={() => handleSetDefault(iban.id)}
-                >
-                  <Star className="size-3" />
-                  Varsayılan Yap
-                </Button>
+        {/* ── Existing IBAN list ────────────────────────────────────── */}
+        {!isLoading &&
+          ibans.map((iban) => (
+            <div
+              key={iban.id}
+              className={cn(
+                "rounded-lg border p-3 space-y-2.5 transition-colors",
+                iban.is_default
+                  ? "border-primary/30 bg-primary/[0.03]"
+                  : "border-border"
               )}
-              {deleteConfirmId === iban.id ? (
-                <div className="flex items-center gap-1.5">
+            >
+              {/* Row 1: bank name + badges */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Landmark className="size-4 text-muted-foreground shrink-0" />
+                  <span className="font-medium text-sm truncate">
+                    {iban.bank_name}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {iban.is_default && (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-primary/20"
+                    >
+                      <Star className="size-2.5" />
+                      Varsayılan
+                    </Badge>
+                  )}
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                    {currencySymbol[iban.currency] ?? iban.currency}{" "}
+                    {iban.currency}
+                  </Badge>
+                </div>
+              </div>
+
+              {/* Row 2: account holder */}
+              <p className="text-xs text-muted-foreground pl-6">
+                {iban.account_holder}
+              </p>
+
+              {/* Row 3: masked IBAN + copy */}
+              <div className="flex items-center gap-2">
+                <code className="text-xs font-mono bg-muted rounded-md px-2.5 py-1.5 flex-1 tracking-wider text-center select-all">
+                  {maskIBAN(iban.iban)}
+                </code>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => handleCopy(iban)}
+                  title="IBAN numarasını kopyala"
+                >
+                  {copiedId === iban.id ? (
+                    <Check className="size-3.5 text-emerald-500" />
+                  ) : (
+                    <Copy className="size-3.5" />
+                  )}
+                </Button>
+              </div>
+
+              {/* Row 4: actions */}
+              <div className="flex gap-1.5 pt-0.5">
+                {!iban.is_default && (
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => handleSetDefault(iban.id)}
+                    disabled={isMutating}
+                  >
+                    <Star className="size-3" />
+                    Varsayılan Yap
+                  </Button>
+                )}
+                {deleteConfirmId === iban.id ? (
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      variant="destructive"
+                      size="xs"
+                      onClick={() => handleDelete(iban)}
+                      disabled={isMutating}
+                    >
+                      <Trash2 className="size-3" />
+                      Silmeyi Onayla
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => setDeleteConfirmId(null)}
+                    >
+                      Vazgeç
+                    </Button>
+                  </div>
+                ) : (
                   <Button
                     variant="destructive"
                     size="xs"
-                    onClick={() => handleDelete(iban.id)}
+                    onClick={() => handleDelete(iban)}
+                    disabled={ibans.length <= 1 || isMutating}
+                    title={
+                      ibans.length <= 1
+                        ? "En az bir IBAN hesabı bulunmalıdır"
+                        : "Bu IBAN hesabını sil"
+                    }
                   >
                     <Trash2 className="size-3" />
-                    Silmeyi Onayla
+                    Sil
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    onClick={() => setDeleteConfirmId(null)}
-                  >
-                    Vazgeç
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  variant="destructive"
-                  size="xs"
-                  onClick={() => handleDelete(iban.id)}
-                  disabled={ibans.length <= 1}
-                  title={
-                    ibans.length <= 1
-                      ? "En az bir IBAN hesabı bulunmalıdır"
-                      : "Bu IBAN hesabını sil"
-                  }
-                >
-                  <Trash2 className="size-3" />
-                  Sil
-                </Button>
-              )}
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
 
         {/* ── Add new IBAN form ──────────────────────────────────────── */}
         {showAddForm ? (
@@ -356,9 +336,13 @@ export function IbanDetailsForm() {
                 size="sm"
                 className="flex-1"
                 onClick={handleAdd}
-                disabled={!isFormValid}
+                disabled={!isFormValid || isAdding}
               >
-                <Plus className="size-3.5" />
+                {isAdding ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Plus className="size-3.5" />
+                )}
                 Ekle
               </Button>
               <Button size="sm" variant="ghost" onClick={resetForm}>

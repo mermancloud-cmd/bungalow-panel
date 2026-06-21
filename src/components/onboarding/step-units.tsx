@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronUp,
   TurkishLira,
+  Hash,
 } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
@@ -16,11 +17,9 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import type { UnitData } from "@/lib/onboarding/types";
-import { AMENITIES_LIST } from "@/lib/onboarding/types";
 
 interface StepUnitsProps {
   data: UnitData[];
@@ -33,6 +32,7 @@ function createEmptyUnit(): UnitData {
     name: "",
     description: "",
     capacity: 2,
+    count: 1,
     basePrice: 0,
     weekendPrice: 0,
     amenities: [],
@@ -48,20 +48,6 @@ export function StepUnits({ data, onChange }: StepUnitsProps) {
     const updated = data.map((u) =>
       u.id === unitId ? { ...u, [field]: value } : u
     );
-    onChange(updated);
-  }
-
-  function toggleAmenity(unitId: string, amenityId: string) {
-    const updated = data.map((u) => {
-      if (u.id !== unitId) return u;
-      const has = u.amenities.includes(amenityId);
-      return {
-        ...u,
-        amenities: has
-          ? u.amenities.filter((a) => a !== amenityId)
-          : [...u.amenities, amenityId],
-      };
-    });
     onChange(updated);
   }
 
@@ -94,13 +80,26 @@ export function StepUnits({ data, onChange }: StepUnitsProps) {
     }
   }
 
+  function incrementCount(unitId: string) {
+    const unit = data.find((u) => u.id === unitId);
+    if (unit && unit.count < 50) {
+      updateUnit(unitId, "count", unit.count + 1);
+    }
+  }
+
+  function decrementCount(unitId: string) {
+    const unit = data.find((u) => u.id === unitId);
+    if (unit && unit.count > 1) {
+      updateUnit(unitId, "count", unit.count - 1);
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div className="space-y-1">
-        <h3 className="text-base font-semibold">Konaklama Birimleri</h3>
+        <h3 className="text-base font-semibold">Oda / Bungalov Tipleri</h3>
         <p className="text-xs text-muted-foreground">
-          İşletmenize ait bungalov / oda birimlerini ekleyin. Her birim için
-          kapasite, fiyat ve olanak bilgilerini girin.
+          İşletmenize ait konaklama birimlerini tanımlayın. Her tip için ad, kapasite ve adet bilgilerini girin.
         </p>
       </div>
 
@@ -147,7 +146,7 @@ export function StepUnits({ data, onChange }: StepUnitsProps) {
                       {hasName ? unit.name : `Birim ${index + 1}`}
                     </p>
                     <p className="text-[10px] text-muted-foreground">
-                      {unit.capacity} kişi · {unit.basePrice > 0 ? `₺${unit.basePrice.toLocaleString("tr-TR")}` : "Fiyat girilmedi"}
+                      {unit.capacity} kişi · {unit.count} adet · {unit.basePrice > 0 ? `₺${unit.basePrice.toLocaleString("tr-TR")}` : "Fiyat girilmedi"}
                     </p>
                   </div>
                 </div>
@@ -208,36 +207,70 @@ export function StepUnits({ data, onChange }: StepUnitsProps) {
                       />
                     </div>
 
-                    {/* Capacity number selector */}
-                    <div className="space-y-1.5">
-                      <Label>Kapasite (Kişi)</Label>
-                      <div className="flex items-center gap-3">
-                        <Button
-                          variant="outline"
-                          size="icon-sm"
-                          onClick={() => decrementCapacity(unit.id)}
-                          disabled={unit.capacity <= 1}
-                        >
-                          -
-                        </Button>
-                        <div className="flex items-center gap-2 rounded-lg border border-input px-3 py-1.5 min-w-[80px] justify-center">
-                          <Users className="size-3.5 text-muted-foreground" />
-                          <span className="text-sm font-medium">
-                            {unit.capacity}
-                          </span>
+                    {/* Capacity & Count */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label>
+                          <div className="flex items-center gap-1">
+                            <Users className="size-3" />
+                            Kapasite (Kişi)
+                          </div>
+                        </Label>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="icon-sm"
+                            onClick={() => decrementCapacity(unit.id)}
+                            disabled={unit.capacity <= 1}
+                          >
+                            -
+                          </Button>
+                          <div className="flex items-center justify-center rounded-lg border border-input px-3 py-1.5 min-w-[50px]">
+                            <span className="text-sm font-medium">{unit.capacity}</span>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="icon-sm"
+                            onClick={() => incrementCapacity(unit.id)}
+                            disabled={unit.capacity >= 20}
+                          >
+                            +
+                          </Button>
                         </div>
-                        <Button
-                          variant="outline"
-                          size="icon-sm"
-                          onClick={() => incrementCapacity(unit.id)}
-                          disabled={unit.capacity >= 20}
-                        >
-                          +
-                        </Button>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label>
+                          <div className="flex items-center gap-1">
+                            <Hash className="size-3" />
+                            Adet
+                          </div>
+                        </Label>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="icon-sm"
+                            onClick={() => decrementCount(unit.id)}
+                            disabled={unit.count <= 1}
+                          >
+                            -
+                          </Button>
+                          <div className="flex items-center justify-center rounded-lg border border-input px-3 py-1.5 min-w-[50px]">
+                            <span className="text-sm font-medium">{unit.count}</span>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="icon-sm"
+                            onClick={() => incrementCount(unit.id)}
+                            disabled={unit.count >= 50}
+                          >
+                            +
+                          </Button>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Pricing */}
+                    {/* Pricing per unit type */}
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
                         <Label htmlFor={`unit-base-${unit.id}`}>
@@ -284,42 +317,6 @@ export function StepUnits({ data, onChange }: StepUnitsProps) {
                         />
                       </div>
                     </div>
-
-                    {/* Amenities checkbox grid */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label>Olanaklar</Label>
-                        <Badge variant="outline" className="text-[10px]">
-                          {unit.amenities.length} seçili
-                        </Badge>
-                      </div>
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-                        {AMENITIES_LIST.map((amenity) => {
-                          const isChecked = unit.amenities.includes(
-                            amenity.id
-                          );
-                          return (
-                            <label
-                              key={amenity.id}
-                              className={cn(
-                                "flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs cursor-pointer transition-colors",
-                                isChecked
-                                  ? "bg-primary/5 text-foreground"
-                                  : "text-muted-foreground hover:text-foreground"
-                              )}
-                            >
-                              <Checkbox
-                                checked={isChecked}
-                                onCheckedChange={() =>
-                                  toggleAmenity(unit.id, amenity.id)
-                                }
-                              />
-                              <span className="truncate">{amenity.label}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
                   </CardContent>
                 </>
               )}
@@ -336,12 +333,11 @@ export function StepUnits({ data, onChange }: StepUnitsProps) {
         onClick={addUnit}
       >
         <Plus className="size-4" />
-        Yeni Birim Ekle
+        Yeni Birim Tipi Ekle
       </Button>
 
       <p className="text-center text-[11px] text-muted-foreground">
-        {data.length} birim eklendi. Daha sonra da birim ekleyip
-        çıkarabilirsiniz.
+        {data.length} birim tipi · Toplam {data.reduce((sum, u) => sum + u.count, 0)} adet birim
       </p>
     </div>
   );

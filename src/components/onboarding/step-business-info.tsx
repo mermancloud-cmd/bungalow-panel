@@ -4,7 +4,7 @@ import * as React from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Building2, Home, Castle, Building } from "lucide-react";
+import { Building2, Home, Castle, Building, TreePine, House } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,7 +14,7 @@ import type { BusinessInfoData, BusinessType } from "@/lib/onboarding/types";
 
 const businessInfoSchema = z.object({
   businessName: z.string().min(2, "İşletme adı en az 2 karakter olmalıdır"),
-  businessType: z.enum(["bungalow", "hotel", "pension", "apartment"], {
+  businessType: z.enum(["bungalow", "tiny_house", "villa", "hotel", "pension", "apartment"], {
     error: "İşletme türü seçiniz",
   }),
   address: z.string().min(5, "Adres en az 5 karakter olmalıdır"),
@@ -22,6 +22,9 @@ const businessInfoSchema = z.object({
   phone: z
     .string()
     .min(10, "Geçerli bir telefon numarası giriniz"),
+  whatsappNumber: z
+    .string()
+    .min(10, "Geçerli bir WhatsApp numarası giriniz"),
   email: z.email("Geçerli bir e-posta adresi giriniz"),
 });
 
@@ -38,6 +41,18 @@ const BUSINESS_TYPES: {
     label: "Bungalov",
     icon: Home,
     description: "Müstakil ahşap evler",
+  },
+  {
+    value: "tiny_house",
+    label: "Tiny House",
+    icon: TreePine,
+    description: "Mini ev / Tiny house",
+  },
+  {
+    value: "villa",
+    label: "Villa",
+    icon: House,
+    description: "Müstakil villa",
   },
   {
     value: "hotel",
@@ -115,7 +130,7 @@ export function StepBusinessInfo({ data, onChange }: StepBusinessInfoProps) {
       {/* Business Type Selector */}
       <div className="space-y-1.5">
         <Label>İşletme Türü *</Label>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           {BUSINESS_TYPES.map((type) => {
             const Icon = type.icon;
             const isSelected = selectedType === type.value;
@@ -207,6 +222,23 @@ export function StepBusinessInfo({ data, onChange }: StepBusinessInfoProps) {
             {errors.phone && (
               <p className="text-xs text-destructive">{errors.phone.message}</p>
             )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="whatsappNumber">WhatsApp Numarası *</Label>
+            <Input
+              id="whatsappNumber"
+              type="tel"
+              placeholder="05XX XXX XX XX (WhatsApp)"
+              {...register("whatsappNumber")}
+              aria-invalid={!!errors.whatsappNumber}
+            />
+            {errors.whatsappNumber && (
+              <p className="text-xs text-destructive">{errors.whatsappNumber.message}</p>
+            )}
+            <p className="text-[10px] text-muted-foreground">
+              Misafirlerle WhatsApp üzerinden iletişim kurmak için kullanılacak numara.
+            </p>
           </div>
 
           <div className="space-y-1.5">

@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Tabs,
   TabsList,
@@ -30,16 +32,36 @@ import {
   ChevronUp,
   AlertTriangle,
   Landmark,
+  Search,
+  CalendarRange,
+  Link2,
+  Loader2,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  mockIBANPayments,
   mockIyzicoSubscription,
-  type IBANPayment,
   type IyzicoSubscription,
 } from "@/lib/mock-data";
 import { IbanDetailsForm } from "@/components/payments/iban-details-form";
 import { PaymentActionModal } from "@/components/payments/payment-action-modal";
+
+// ─── Hooks ─────────────────────────────────────────────────────────────────────
+
+import {
+  useIBANPayments,
+  useApprovePayment,
+  useRejectPayment,
+  useAutoMatchPayment,
+  type PaymentFilters,
+  type IBANPayment,
+} from "@/hooks/use-iban-payments";
+import {
+  useOwnerIBANs,
+  useAddIBAN,
+  useSetDefaultIBAN,
+  useDeleteIBAN,
+} from "@/hooks/use-owner-ibans";
 
 // ─── Status helpers ────────────────────────────────────────────────────────────
 
@@ -107,9 +129,13 @@ function formatTime(iso: string) {
 function IBANPaymentCard({
   payment,
   onSelect,
+  onAutoMatch,
+  isMatching,
 }: {
   payment: IBANPayment;
   onSelect: (id: string) => void;
+  onAutoMatch?: (id: string, ref: string) => void;
+  isMatching?: boolean;
 }) {
   const [expanded, setExpanded] = React.useState(false);
   const status = statusConfig[payment.status];
@@ -131,7 +157,10 @@ function IBANPaymentCard({
                 </span>
                 <Badge
                   variant="outline"
-                  className="text-[10px] px-1.5 py-0 shrink-0"
+                  className={cn(
+                    "text-[10px] px-1.5 py-0 shrink-0",
+                    status.color
+                  )}
                 >
                   {status.label}
                 </Badge>
@@ -207,20 +236,43 @@ function IBANPaymentCard({
             </div>
           )}
 
-          {payment.status === "pending" && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-full"
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelect(payment.id);
-              }}
-            >
-              <CreditCard className="size-3.5" />
-              Ödeme İşlemi Yap
-            </Button>
-          )}
+          <div className="flex gap-2">
+            {payment.status === "pending" && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect(payment.id);
+                }}
+              >
+                <CreditCard className="size-3.5" />
+                Ödeme İşlemi Yap
+              </Button>
+            )}
+
+            {/* Auto-match button for pending payments with reference codes */}
+            {payment.status === "pending" && payment.reference_code && onAutoMatch && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAutoMatch(payment.id, payment.reference_code);
+                }}
+                disabled={isMatching}
+                title="Rezervasyonla otomatik eşleştir"
+              >
+                {isMatching ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Link2 className="size-3.5" />
+                )}
+                Eşleştir
+              </Button>
+            )}
+          </div>
         </div>
       )}
     </Card>
@@ -349,6 +401,62 @@ function PaymentSummaryStrip({ payments }: { payments: IBANPayment[] }) {
   );
 }
 
+// ─── Date Range Filter ─────────────────────────────────────────────────────────
+
+function DateRangeFilter({
+  dateFrom,
+  dateTo,
+  onDateFromChange,
+  onDateToChange,
+  onClear,
+}: {
+  dateFrom: string;
+  dateTo: string;
+  onDateFromChange: (v: string) => void;
+  onDateToChange: (v: string) => void;
+  onClear: () => void;
+}) {
+  const hasFilter = dateFrom || dateTo;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <Label className="text-xs flex items-center gap-1.5 text-muted-foreground">
+          <CalendarRange className="size-3.5" />
+          Tarih Aralığı
+        </Label>
+        {hasFilter && (
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={onClear}
+            className="text-muted-foreground"
+          >
+            <X className="size-3" />
+            Temizle
+          </Button>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Input
+          type="date"
+          value={dateFrom}
+          onChange={(e) => onDateFromChange(e.target.value)}
+          className="text-xs h-8"
+          placeholder="Başlangıç"
+        />
+        <Input
+          type="date"
+          value={dateTo}
+          onChange={(e) => onDateToChange(e.target.value)}
+          className="text-xs h-8"
+          placeholder="Bitiş"
+        />
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
 export default function PaymentsPage() {
@@ -357,22 +465,77 @@ export default function PaymentsPage() {
     setIsMounted(true);
   }, []);
 
-  const [payments, setPayments] = React.useState(mockIBANPayments);
-  const [filter, setFilter] = React.useState<
+  // ── Filter state ───────────────────────────────────────────────────────
+  const [statusFilter, setStatusFilter] = React.useState<
     "all" | "pending" | "approved" | "rejected"
   >("all");
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [dateFrom, setDateFrom] = React.useState("");
+  const [dateTo, setDateTo] = React.useState("");
   const [selectedPaymentId, setSelectedPaymentId] = React.useState<
     string | null
   >(null);
+  const [showDateFilter, setShowDateFilter] = React.useState(false);
 
-  // Find the currently selected payment
+  // Debounced search
+  const [debouncedSearch, setDebouncedSearch] = React.useState("");
+  React.useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // ── Build filters object ─────────────────────────────────────────────
+  const filters: PaymentFilters = React.useMemo(
+    () => ({
+      status: statusFilter,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+      search: debouncedSearch || undefined,
+    }),
+    [statusFilter, dateFrom, dateTo, debouncedSearch]
+  );
+
+  // ── Data hooks ───────────────────────────────────────────────────────
+  const {
+    data: payments = [],
+    isLoading: paymentsLoading,
+    isFetching: paymentsFetching,
+  } = useIBANPayments(filters);
+
+  const approveMutation = useApprovePayment();
+  const rejectMutation = useRejectPayment();
+  const autoMatchMutation = useAutoMatchPayment();
+
+  // ── Owner IBAN hooks ─────────────────────────────────────────────────
+  const { data: ownerIbans = [], isLoading: ibansLoading } = useOwnerIBANs();
+  const addIbanMutation = useAddIBAN();
+  const setDefaultIbanMutation = useSetDefaultIBAN();
+  const deleteIbanMutation = useDeleteIBAN();
+
+  // ── Optimistic local state overlay ──────────────────────────────────
+  // For immediate UI feedback when Supabase is unavailable
+  const [localPayments, setLocalPayments] = React.useState<IBANPayment[]>([]);
+  const effectivePayments =
+    localPayments.length > 0 ? localPayments : payments;
+
+  // Sync when remote data arrives
+  React.useEffect(() => {
+    if (payments.length > 0) {
+      setLocalPayments([]);
+    }
+  }, [payments]);
+
+  // ── Handlers ─────────────────────────────────────────────────────────
+
   const selectedPayment = selectedPaymentId
-    ? payments.find((p) => p.id === selectedPaymentId) ?? null
+    ? effectivePayments.find((p) => p.id === selectedPaymentId) ?? null
     : null;
 
   const handleApprove = (id: string, notes?: string) => {
-    setPayments((prev) =>
-      prev.map((p) =>
+    // Optimistic update
+    setLocalPayments((prev) => {
+      const base = prev.length > 0 ? prev : payments;
+      return base.map((p) =>
         p.id === id
           ? {
               ...p,
@@ -382,14 +545,17 @@ export default function PaymentsPage() {
               notes: notes ?? "Manuel onaylandı.",
             }
           : p
-      )
-    );
+      );
+    });
+    approveMutation.mutate({ id, notes });
     setSelectedPaymentId(null);
   };
 
   const handleReject = (id: string, notes?: string) => {
-    setPayments((prev) =>
-      prev.map((p) =>
+    // Optimistic update
+    setLocalPayments((prev) => {
+      const base = prev.length > 0 ? prev : payments;
+      return base.map((p) =>
         p.id === id
           ? {
               ...p,
@@ -399,17 +565,38 @@ export default function PaymentsPage() {
               notes: notes ?? "Manuel reddedildi.",
             }
           : p
-      )
-    );
+      );
+    });
+    rejectMutation.mutate({ id, notes });
     setSelectedPaymentId(null);
   };
 
-  const filtered =
-    filter === "all"
-      ? payments
-      : payments.filter((p) => p.status === filter);
+  const handleAutoMatch = (paymentId: string, referenceCode: string) => {
+    autoMatchMutation.mutate({ paymentId, referenceCode });
+  };
 
-  const pendingCount = payments.filter((p) => p.status === "pending").length;
+  // ── Owner IBAN handlers ──────────────────────────────────────────────
+
+  const handleAddIBAN = (input: { bank_name: string; account_holder: string; iban: string; currency: string }) => {
+    addIbanMutation.mutate(input);
+  };
+
+  const handleSetDefaultIBAN = (id: string) => {
+    setDefaultIbanMutation.mutate(id);
+  };
+
+  const handleDeleteIBAN = (id: string, wasDefault: boolean) => {
+    deleteIbanMutation.mutate({ id, wasDefault });
+  };
+
+  // ── Derived data ─────────────────────────────────────────────────────
+
+  const pendingCount = effectivePayments.filter(
+    (p) => p.status === "pending"
+  ).length;
+
+  const isMutating =
+    approveMutation.isPending || rejectMutation.isPending;
 
   if (!isMounted) return null;
 
@@ -448,8 +635,19 @@ export default function PaymentsPage() {
           {/* ── Tab 1: IBAN Management ──────────────────────────── */}
           <TabsContent value="iban" className="mt-3">
             <div className="flex flex-col gap-4">
-              {/* IBAN accounts form */}
-              <IbanDetailsForm />
+              {/* IBAN accounts form - now connected to Supabase */}
+              <IbanDetailsForm
+                ibans={ownerIbans}
+                isLoading={ibansLoading}
+                onAdd={handleAddIBAN}
+                onSetDefault={handleSetDefaultIBAN}
+                onDelete={handleDeleteIBAN}
+                isAdding={addIbanMutation.isPending}
+                isMutating={
+                  setDefaultIbanMutation.isPending ||
+                  deleteIbanMutation.isPending
+                }
+              />
 
               <Separator />
 
@@ -476,15 +674,72 @@ export default function PaymentsPage() {
                     <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                       <Banknote className="size-4 text-primary" />
                       IBAN Havale / EFT Takibi
+                      {paymentsFetching && (
+                        <Loader2 className="size-3 animate-spin text-muted-foreground" />
+                      )}
                     </h3>
-                    <PaymentSummaryStrip payments={payments} />
+                    <PaymentSummaryStrip payments={effectivePayments} />
                   </div>
+
+                  {/* Search bar */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Misafir adı veya referans kodu ara..."
+                      value={searchQuery}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        setSearchQuery(e.target.value)
+                      }
+                      className="pl-9 h-9 text-sm"
+                    />
+                    {searchQuery && (
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        className="absolute right-2 top-1/2 -translate-y-1/2"
+                        onClick={() => setSearchQuery("")}
+                      >
+                        <X className="size-3" />
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Date range toggle */}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant={showDateFilter ? "default" : "outline"}
+                      size="xs"
+                      onClick={() => setShowDateFilter(!showDateFilter)}
+                    >
+                      <CalendarRange className="size-3" />
+                      Tarih Filtresi
+                    </Button>
+                    {(dateFrom || dateTo) && (
+                      <Badge variant="secondary" className="text-[10px]">
+                        Aktif
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Date range filter (collapsible) */}
+                  {showDateFilter && (
+                    <DateRangeFilter
+                      dateFrom={dateFrom}
+                      dateTo={dateTo}
+                      onDateFromChange={setDateFrom}
+                      onDateToChange={setDateTo}
+                      onClear={() => {
+                        setDateFrom("");
+                        setDateTo("");
+                      }}
+                    />
+                  )}
 
                   {/* Filter tabs */}
                   <Tabs
                     defaultValue="all"
                     onValueChange={(v) =>
-                      setFilter(
+                      setStatusFilter(
                         v as "all" | "pending" | "approved" | "rejected"
                       )
                     }
@@ -499,17 +754,45 @@ export default function PaymentsPage() {
 
                   {/* Payment list */}
                   <div className="flex flex-col gap-2">
-                    {filtered.length === 0 ? (
+                    {paymentsLoading ? (
+                      <div className="text-center py-8">
+                        <Loader2 className="size-6 animate-spin mx-auto text-muted-foreground" />
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Ödemeler yükleniyor...
+                        </p>
+                      </div>
+                    ) : effectivePayments.length === 0 ? (
                       <div className="text-center py-8 text-sm text-muted-foreground">
                         <RefreshCw className="size-8 mx-auto mb-2 opacity-50" />
                         <p>Bu kategoride ödeme bulunamadı.</p>
+                        {(searchQuery || dateFrom || dateTo || statusFilter !== "all") && (
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            className="mt-2"
+                            onClick={() => {
+                              setSearchQuery("");
+                              setDateFrom("");
+                              setDateTo("");
+                              setStatusFilter("all");
+                            }}
+                          >
+                            Filtreleri Temizle
+                          </Button>
+                        )}
                       </div>
                     ) : (
-                      filtered.map((payment) => (
+                      effectivePayments.map((payment) => (
                         <IBANPaymentCard
                           key={payment.id}
                           payment={payment}
                           onSelect={setSelectedPaymentId}
+                          onAutoMatch={handleAutoMatch}
+                          isMatching={
+                            autoMatchMutation.isPending &&
+                            autoMatchMutation.variables?.paymentId ===
+                              payment.id
+                          }
                         />
                       ))
                     )}

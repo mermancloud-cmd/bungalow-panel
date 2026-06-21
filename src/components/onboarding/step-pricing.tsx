@@ -1,37 +1,22 @@
 "use client";
 
 import * as React from "react";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  Banknote,
-  Clock,
-  CalendarDays,
-  ShieldCheck,
-  Percent,
-} from "lucide-react";
+import { Banknote, CalendarDays, Plus, Trash2, TrendingUp } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
-import type { PricingData, Currency } from "@/lib/onboarding/types";
+import type { PricingData, Currency, SeasonalAdjustment } from "@/lib/onboarding/types";
 
-const pricingSchema = z.object({
-  currency: z.enum(["TRY", "EUR", "USD"], { error: "Para birimi seçiniz" }),
-  depositPercentage: z.number().min(0).max(100),
-  cancellationPolicy: z.string(),
-  minimumStayNights: z.number().min(1, "En az 1 gece").max(30, "En fazla 30 gece"),
-  checkInTime: z.string().min(1, "Giriş saati gerekli"),
-  checkOutTime: z.string().min(1, "Çıkış saati gerekli"),
-});
-
-type PricingForm = z.infer<typeof pricingSchema>;
+interface StepPricingProps {
+  data: PricingData;
+  onChange: (data: PricingData) => void;
+}
 
 const CURRENCIES: { value: Currency; label: string; symbol: string }[] = [
   { value: "TRY", label: "Türk Lirası", symbol: "₺" },
@@ -39,47 +24,44 @@ const CURRENCIES: { value: Currency; label: string; symbol: string }[] = [
   { value: "USD", label: "Amerikan Doları", symbol: "$" },
 ];
 
-const TIME_OPTIONS = [
-  "08:00", "09:00", "10:00", "11:00", "12:00",
-  "13:00", "14:00", "15:00", "16:00", "17:00",
-  "18:00", "19:00", "20:00", "21:00", "22:00",
-];
-
-interface StepPricingProps {
-  data: PricingData;
-  onChange: (data: PricingData) => void;
-}
-
 export function StepPricing({ data, onChange }: StepPricingProps) {
-  const {
-    register,
-    watch,
-    setValue,
-    formState: { errors },
-  } = useForm<PricingForm>({
-    resolver: zodResolver(pricingSchema),
-    defaultValues: data,
-    mode: "onBlur",
-  });
+  function updateField<K extends keyof PricingData>(key: K, value: PricingData[K]) {
+    onChange({ ...data, [key]: value });
+  }
 
-  const depositValue = watch("depositPercentage") ?? data.depositPercentage;
-  const selectedCurrency = watch("currency") ?? data.currency;
+  function addSeasonalAdjustment() {
+    const newAdj: SeasonalAdjustment = {
+      id: crypto.randomUUID(),
+      name: "",
+      startDate: "06-01",
+      endDate: "09-30",
+      multiplier: 1.2,
+    };
+    updateField("seasonalAdjustments", [...data.seasonalAdjustments, newAdj]);
+  }
 
-  // Sync parent
-  React.useEffect(() => {
-    const subscription = watch((values) => {
-      onChange(values as PricingData);
-    });
-    return () => subscription.unsubscribe();
-  }, [watch, onChange]);
+  function updateAdjustment(id: string, field: keyof SeasonalAdjustment, value: string | number) {
+    updateField(
+      "seasonalAdjustments",
+      data.seasonalAdjustments.map((a) =>
+        a.id === id ? { ...a, [field]: value } : a
+      )
+    );
+  }
+
+  function removeAdjustment(id: string) {
+    updateField(
+      "seasonalAdjustments",
+      data.seasonalAdjustments.filter((a) => a.id !== id)
+    );
+  }
 
   return (
     <div className="space-y-5">
       <div className="space-y-1">
-        <h3 className="text-base font-semibold">Fiyatlandırma Kuralları</h3>
+        <h3 className="text-base font-semibold">Fiyatlandırma</h3>
         <p className="text-xs text-muted-foreground">
-          Tüm birimleriniz için geçerli olacak genel fiyatlandırma ve rezervasyon
-          kurallarını belirleyin.
+          Para birimi, minimum konaklama süresi ve sezonluk fiyat ayarlarını belirleyin.
         </p>
       </div>
 
@@ -88,14 +70,12 @@ export function StepPricing({ data, onChange }: StepPricingProps) {
         <Label>Para Birimi *</Label>
         <div className="grid grid-cols-3 gap-2">
           {CURRENCIES.map((cur) => {
-            const isSelected = selectedCurrency === cur.value;
+            const isSelected = data.currency === cur.value;
             return (
               <button
                 key={cur.value}
                 type="button"
-                onClick={() =>
-                  setValue("currency", cur.value, { shouldValidate: true })
-                }
+                onClick={() => updateField("currency", cur.value)}
                 className={cn(
                   "flex flex-col items-center gap-1 rounded-xl border-2 px-3 py-2.5 transition-all",
                   isSelected
@@ -126,62 +106,6 @@ export function StepPricing({ data, onChange }: StepPricingProps) {
         </div>
       </div>
 
-      {/* Deposit percentage slider */}
-      <Card size="sm">
-        <CardContent className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Percent className="size-4 text-primary" />
-              <Label>Ön Ödeme Oranı</Label>
-            </div>
-            <Badge className="bg-primary/10 text-primary font-semibold text-sm px-2.5 py-0.5">
-              %{depositValue}
-            </Badge>
-          </div>
-
-          <Slider
-            value={[depositValue]}
-            onValueChange={(val) => {
-              const v = Array.isArray(val) ? val[0] : val;
-              setValue("depositPercentage", v, { shouldValidate: true });
-            }}
-            min={0}
-            max={100}
-            step={5}
-          />
-
-          <div className="flex justify-between text-[10px] text-muted-foreground">
-            <span>%0 (Ön ödemesiz)</span>
-            <span>%50</span>
-            <span>%100 (Tam ödeme)</span>
-          </div>
-
-          <p className="text-[11px] text-muted-foreground">
-            Rezervasyon sırasında misafirden alınacak ön ödeme oranı. Geri kalan
-            tutar check-in sırasında tahsil edilir.
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Cancellation policy */}
-      <div className="space-y-1.5">
-        <Label htmlFor="cancellationPolicy">
-          <div className="flex items-center gap-1.5">
-            <ShieldCheck className="size-3.5" />
-            İptal Politikası
-          </div>
-        </Label>
-        <Textarea
-          id="cancellationPolicy"
-          placeholder="örn: 7 gün öncesine kadar ücretsiz iptal. 3-7 gün arası %50 iade. 3 günden az süre kala iade yapılmaz."
-          className="min-h-[100px]"
-          {...register("cancellationPolicy")}
-        />
-        <p className="text-[11px] text-muted-foreground">
-          Bu metin rezervasyon sayfasında misafirlere gösterilir.
-        </p>
-      </div>
-
       {/* Minimum stay */}
       <div className="space-y-1.5">
         <Label htmlFor="minimumStayNights">
@@ -196,11 +120,8 @@ export function StepPricing({ data, onChange }: StepPricingProps) {
             size="icon-sm"
             type="button"
             onClick={() => {
-              const current = watch("minimumStayNights") ?? 1;
-              if (current > 1)
-                setValue("minimumStayNights", current - 1, {
-                  shouldValidate: true,
-                });
+              if (data.minimumStayNights > 1)
+                updateField("minimumStayNights", data.minimumStayNights - 1);
             }}
           >
             -
@@ -211,78 +132,125 @@ export function StepPricing({ data, onChange }: StepPricingProps) {
             min={1}
             max={30}
             className="w-20 text-center"
-            {...register("minimumStayNights", { valueAsNumber: true })}
-            aria-invalid={!!errors.minimumStayNights}
+            value={data.minimumStayNights}
+            onChange={(e) => updateField("minimumStayNights", Math.max(1, Math.min(30, Number(e.target.value))))}
           />
           <Button
             variant="outline"
             size="icon-sm"
             type="button"
             onClick={() => {
-              const current = watch("minimumStayNights") ?? 1;
-              if (current < 30)
-                setValue("minimumStayNights", current + 1, {
-                  shouldValidate: true,
-                });
+              if (data.minimumStayNights < 30)
+                updateField("minimumStayNights", data.minimumStayNights + 1);
             }}
           >
             +
           </Button>
           <span className="text-xs text-muted-foreground">gece</span>
         </div>
-        {errors.minimumStayNights && (
-          <p className="text-xs text-destructive">
-            {errors.minimumStayNights.message}
-          </p>
-        )}
       </div>
 
-      {/* Check-in / Check-out times */}
-      <Card size="sm">
-        <CardContent>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="checkInTime">
-                <div className="flex items-center gap-1.5">
-                  <Clock className="size-3.5" />
-                  Giriş Saati
-                </div>
-              </Label>
-              <select
-                id="checkInTime"
-                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
-                {...register("checkInTime")}
-              >
-                {TIME_OPTIONS.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="checkOutTime">
-                <div className="flex items-center gap-1.5">
-                  <Clock className="size-3.5" />
-                  Çıkış Saati
-                </div>
-              </Label>
-              <select
-                id="checkOutTime"
-                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
-                {...register("checkOutTime")}
-              >
-                {TIME_OPTIONS.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </div>
+      <Separator />
+
+      {/* Seasonal adjustments */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="size-4 text-primary" />
+            <Label>Sezonluk Fiyat Ayarları</Label>
           </div>
-        </CardContent>
-      </Card>
+          {data.seasonalAdjustments.length > 0 && (
+            <Badge variant="outline" className="text-[10px]">
+              {data.seasonalAdjustments.length} kural
+            </Badge>
+          )}
+        </div>
+
+        <p className="text-[11px] text-muted-foreground">
+          Belirli dönemlerde birim fiyatlarına otomatik çarpan uygulanır. Örn: Yaz sezonu +20%.
+        </p>
+
+        {data.seasonalAdjustments.map((adj) => (
+          <Card key={adj.id} size="sm">
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Input
+                  placeholder="Sezon adı (örn: Yaz Sezonu)"
+                  value={adj.name}
+                  onChange={(e) => updateAdjustment(adj.id, "name", e.target.value)}
+                  className="text-sm font-medium"
+                />
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="text-destructive hover:text-destructive shrink-0 ml-2"
+                  onClick={() => removeAdjustment(adj.id)}
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Başlangıç (AA-GG)</Label>
+                  <Input
+                    placeholder="06-01"
+                    value={adj.startDate}
+                    onChange={(e) => updateAdjustment(adj.id, "startDate", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Bitiş (AA-GG)</Label>
+                  <Input
+                    placeholder="09-30"
+                    value={adj.endDate}
+                    onChange={(e) => updateAdjustment(adj.id, "endDate", e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[11px]">Fiyat Çarpanı</Label>
+                  <Badge className={cn(
+                    "text-xs font-semibold px-2 py-0.5",
+                    adj.multiplier > 1 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" :
+                    adj.multiplier < 1 ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400" :
+                    "bg-muted text-muted-foreground"
+                  )}>
+                    x{adj.multiplier.toFixed(1)}
+                  </Badge>
+                </div>
+                <Slider
+                  value={[adj.multiplier]}
+                  onValueChange={(val) => {
+                    const v = Array.isArray(val) ? val[0] : val;
+                    updateAdjustment(adj.id, "multiplier", v);
+                  }}
+                  min={0.5}
+                  max={2.0}
+                  step={0.1}
+                />
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                  <span>x0.5 (İndirim)</span>
+                  <span>x1.0 (Normal)</span>
+                  <span>x2.0 (Artış)</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+
+        <Button
+          variant="outline"
+          className="w-full border-dashed"
+          size="lg"
+          onClick={addSeasonalAdjustment}
+        >
+          <Plus className="size-4" />
+          Sezon Kuralı Ekle
+        </Button>
+      </div>
     </div>
   );
 }
-
