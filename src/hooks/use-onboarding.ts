@@ -14,6 +14,8 @@ interface UseOnboardingReturn {
   completedCount: number;
   allComplete: boolean;
   businessId: string | null;
+  savedProgress: Partial<Record<number, Record<string, unknown>>> | null;
+  lastCompletedStep: number;
   initOnboarding: () => Promise<void>;
   completeStep: (stepNumber: number, stepData: Record<string, unknown>) => Promise<boolean>;
   checkComplete: () => Promise<boolean>;
@@ -26,6 +28,7 @@ export function useOnboarding(): UseOnboardingReturn {
   const [isInitializing, setIsInitializing] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [businessId, setBusinessId] = React.useState<string | null>(null);
+  const [savedProgress, setSavedProgress] = React.useState<Partial<Record<number, Record<string, unknown>>> | null>(null);
 
   const completedCount = React.useMemo(
     () => stepStatuses.filter((s) => s.completed).length,
@@ -34,13 +37,29 @@ export function useOnboarding(): UseOnboardingReturn {
 
   const allComplete = completedCount === 12;
 
+  // Get the last completed step number (for resume functionality)
+  const lastCompletedStep = React.useMemo(() => {
+    const completed = stepStatuses.filter((s) => s.completed);
+    if (completed.length === 0) return 0;
+    return Math.max(...completed.map((s) => s.stepNumber));
+  }, [stepStatuses]);
+
   // Get business ID from the current user session
   const getBusinessId = React.useCallback(async (): Promise<string | null> => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
 
-      // Get the user's business
+      // Try bungalows table first (new schema from parent task)
+      const { data: bungalow } = await supabase
+        .from("bungalows")
+        .select("id")
+        .eq("owner_id", user.id)
+        .single();
+
+      if (bungalow?.id) return bungalow.id;
+
+      // Fallback: businesses table
       const { data: business } = await supabase
         .from("businesses")
         .select("id")
@@ -53,7 +72,7 @@ export function useOnboarding(): UseOnboardingReturn {
     }
   }, []);
 
-  // Initialize onboarding steps via RPC
+  // Initialize onboarding: load step statuses AND saved progress data
   const initOnboarding = React.useCallback(async () => {
     setIsInitializing(true);
     setError(null);
@@ -66,22 +85,48 @@ export function useOnboarding(): UseOnboardingReturn {
       }
       setBusinessId(bizId);
 
+      // 1. Try to load saved progress data from bungalows.onboarding_progress JSONB
+      //    This is the new column created by the parent DB schema task
+      let progressData: Partial<Record<number, Record<string, unknown>>> = {};
+      try {
+        const { data: bungalowRow } = await supabase
+          .from("bungalows")
+          .select("onboarding_progress, onboarding_completed")
+          .eq("id", bizId)
+          .single();
+
+        if (bungalowRow?.onboarding_progress && typeof bungalowRow.onboarding_progress === "object") {
+          // onboarding_progress is stored as { "1": {...data}, "2": {...data}, ... }
+          progressData = bungalowRow.onboarding_progress as Partial<Record<number, Record<string, unknown>>>;
+          setSavedProgress(progressData);
+        }
+      } catch {
+        // bungalows table may not have the column yet, continue
+      }
+
+      // 2. Initialize/load step statuses via RPC
       const { data, error: rpcError } = await supabase.rpc(
         "init_onboarding_steps",
         { p_business_id: bizId }
       );
 
       if (rpcError) {
-        // If RPC doesn't exist yet, fall back to local state
         console.warn("init_onboarding_steps RPC not available:", rpcError.message);
+
+        // Build step statuses from saved progress data if available
+        const progressKeys = Object.keys(progressData);
         const fallbackStatuses: OnboardingStepStatus[] = Array.from(
           { length: 12 },
-          (_, i) => ({
-            stepNumber: i + 1,
-            label: "",
-            completed: false,
-            completedAt: null,
-          })
+          (_, i) => {
+            const stepNum = i + 1;
+            const hasProgress = progressKeys.includes(String(stepNum));
+            return {
+              stepNumber: stepNum,
+              label: "",
+              completed: hasProgress,
+              completedAt: hasProgress ? new Date().toISOString() : null,
+            };
+          }
         );
         setStepStatuses(fallbackStatuses);
         return;
@@ -99,7 +144,6 @@ export function useOnboarding(): UseOnboardingReturn {
       }
     } catch (err) {
       console.error("Failed to init onboarding:", err);
-      // Fall back to local state
       const fallbackStatuses: OnboardingStepStatus[] = Array.from(
         { length: 12 },
         (_, i) => ({
@@ -115,7 +159,8 @@ export function useOnboarding(): UseOnboardingReturn {
     }
   }, [getBusinessId]);
 
-  // Complete a single step via RPC
+  // Complete a single step: save data via update_onboarding_progress RPC
+  // This stores step data in bungalows.onboarding_progress JSONB
   const completeStep = React.useCallback(
     async (stepNumber: number, stepData: Record<string, unknown>): Promise<boolean> => {
       if (!businessId) return false;
@@ -124,17 +169,31 @@ export function useOnboarding(): UseOnboardingReturn {
       setError(null);
 
       try {
-        const { error: rpcError } = await supabase.rpc("complete_onboarding_step", {
+        // Primary: use the new update_onboarding_progress RPC
+        // Created by parent DB schema task (t_0001d90b)
+        // Args: p_business_id UUID, p_step_number INTEGER, p_step_data JSONB
+        const { error: rpcError } = await supabase.rpc("update_onboarding_progress", {
           p_business_id: businessId,
           p_step_number: stepNumber,
           p_step_data: stepData,
         });
 
         if (rpcError) {
-          console.warn("complete_onboarding_step RPC not available:", rpcError.message);
+          console.warn("update_onboarding_progress RPC error:", rpcError.message);
+
+          // Fallback: try complete_onboarding_step RPC (legacy)
+          const { error: legacyError } = await supabase.rpc("complete_onboarding_step", {
+            p_business_id: businessId,
+            p_step_number: stepNumber,
+            p_step_data: stepData,
+          });
+
+          if (legacyError) {
+            console.warn("complete_onboarding_step RPC also failed:", legacyError.message);
+          }
         }
 
-        // Update local state regardless (works even if RPC isn't deployed yet)
+        // Update local state
         setStepStatuses((prev) =>
           prev.map((s) =>
             s.stepNumber === stepNumber
@@ -142,6 +201,12 @@ export function useOnboarding(): UseOnboardingReturn {
               : s
           )
         );
+
+        // Update saved progress cache
+        setSavedProgress((prev) => ({
+          ...prev,
+          [stepNumber]: stepData,
+        }));
 
         return true;
       } catch (err) {
@@ -166,7 +231,6 @@ export function useOnboarding(): UseOnboardingReturn {
       );
 
       if (rpcError) {
-        // Fall back to local state check
         return completedCount === 12;
       }
 
@@ -177,7 +241,7 @@ export function useOnboarding(): UseOnboardingReturn {
   }, [businessId, completedCount]);
 
   // Activate the business (final binary gate)
-  // Sets onboarding_completed = true and activates WF02 for this tenant
+  // Sets onboarding_completed = true and activates Elif AI for this tenant
   const activateBusiness = React.useCallback(async (): Promise<boolean> => {
     if (!businessId || !allComplete) return false;
 
@@ -193,10 +257,9 @@ export function useOnboarding(): UseOnboardingReturn {
       if (rpcError) {
         console.warn("activate_business RPC not available:", rpcError.message);
 
-        // Fallback: directly update the tenant/business record
-        // Set onboarding_completed = true + timestamp
+        // Fallback: directly update the bungalow/business record
         const { error: updateError } = await supabase
-          .from("tenants")
+          .from("bungalows")
           .update({
             onboarding_completed: true,
             onboarding_completed_at: new Date().toISOString(),
@@ -205,9 +268,9 @@ export function useOnboarding(): UseOnboardingReturn {
           .eq("id", businessId);
 
         if (updateError) {
-          // Try businesses table as fallback
+          // Try tenants table as fallback
           await supabase
-            .from("businesses")
+            .from("tenants")
             .update({
               onboarding_completed: true,
               onboarding_completed_at: new Date().toISOString(),
@@ -217,8 +280,7 @@ export function useOnboarding(): UseOnboardingReturn {
         }
       }
 
-      // Trigger WF02 activation for this tenant
-      // WF02 = Elif AI conversation workflow for the tenant
+      // Trigger Elif AI activation for this tenant
       try {
         const { error: wfError } = await supabase.rpc("activate_wf02", {
           p_tenant_id: businessId,
@@ -226,7 +288,6 @@ export function useOnboarding(): UseOnboardingReturn {
 
         if (wfError) {
           console.warn("activate_wf02 RPC not available:", wfError.message);
-          // Fallback: update tenant settings to enable AI
           await supabase
             .from("tenant_settings")
             .update({ ai_enabled: true, updated_at: new Date().toISOString() })
@@ -259,6 +320,8 @@ export function useOnboarding(): UseOnboardingReturn {
     completedCount,
     allComplete,
     businessId,
+    savedProgress,
+    lastCompletedStep,
     initOnboarding,
     completeStep,
     checkComplete,

@@ -12,6 +12,7 @@ import {
   Loader2,
   LayoutDashboard,
   Save,
+  AlertTriangle,
 } from "lucide-react";
 
 import { MobileShell } from "@/components/layout/mobile-shell";
@@ -33,6 +34,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useOnboarding } from "@/hooks/use-onboarding";
+import { validateStep } from "@/lib/onboarding/validation";
 import {
   DEFAULT_ONBOARDING_DATA,
   STEP_LABELS,
@@ -59,6 +61,8 @@ function OnboardingWizard() {
   const [currentStep, setCurrentStep] = React.useState(1);
   const [isActivated, setIsActivated] = React.useState(false);
   const [saveSuccess, setSaveSuccess] = React.useState(false);
+  const [validationErrors, setValidationErrors] = React.useState<string[]>([]);
+  const [hasResumed, setHasResumed] = React.useState(false);
 
   const {
     stepStatuses,
@@ -67,6 +71,8 @@ function OnboardingWizard() {
     error,
     completedCount,
     allComplete,
+    savedProgress,
+    lastCompletedStep,
     completeStep,
     activateBusiness,
   } = useOnboarding();
@@ -92,6 +98,82 @@ function OnboardingWizard() {
   React.useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  // Restore saved progress data when initialization completes
+  React.useEffect(() => {
+    if (isInitializing || hasResumed) return;
+    if (!savedProgress || Object.keys(savedProgress).length === 0) {
+      setHasResumed(true);
+      return;
+    }
+
+    setData((prev) => {
+      const restored = { ...prev };
+
+      // Step 1: Business Info
+      if (savedProgress[1]) {
+        restored.business = { ...prev.business, ...(savedProgress[1] as Partial<BusinessInfoData>) };
+      }
+      // Step 2: Location
+      if (savedProgress[2]) {
+        restored.location = { ...prev.location, ...(savedProgress[2] as Partial<LocationData>) };
+      }
+      // Step 3: Units
+      if (savedProgress[3] && typeof savedProgress[3] === "object" && "units" in savedProgress[3]) {
+        const unitsData = savedProgress[3] as { units?: UnitData[] };
+        if (Array.isArray(unitsData.units) && unitsData.units.length > 0) {
+          restored.units = unitsData.units;
+        }
+      }
+      // Step 4: Pricing
+      if (savedProgress[4]) {
+        restored.pricing = { ...prev.pricing, ...(savedProgress[4] as Partial<PricingData>) };
+      }
+      // Step 5: Amenities
+      if (savedProgress[5]) {
+        restored.amenities = { ...prev.amenities, ...(savedProgress[5] as Partial<AmenitiesData>) };
+      }
+      // Step 6: Rules
+      if (savedProgress[6]) {
+        restored.rules = { ...prev.rules, ...(savedProgress[6] as Partial<RulesData>) };
+      }
+      // Step 7: Cancellation
+      if (savedProgress[7]) {
+        restored.cancellation = {
+          ...prev.cancellation,
+          ...(savedProgress[7] as Partial<CancellationData>),
+        };
+      }
+      // Step 8: Deposit/Payment
+      if (savedProgress[8]) {
+        restored.depositPayment = {
+          ...prev.depositPayment,
+          ...(savedProgress[8] as Partial<DepositPaymentData>),
+        };
+      }
+      // Step 9: Surroundings
+      if (savedProgress[9]) {
+        restored.surroundings = { ...prev.surroundings, ...(savedProgress[9] as Partial<SurroundingsData>) };
+      }
+      // Step 10: Emergency
+      if (savedProgress[10]) {
+        restored.emergency = { ...prev.emergency, ...(savedProgress[10] as Partial<EmergencyData>) };
+      }
+      // Step 11: Greeting
+      if (savedProgress[11]) {
+        restored.greeting = { ...prev.greeting, ...(savedProgress[11] as Partial<GreetingData>) };
+      }
+
+      return restored;
+    });
+
+    // Resume from the next uncompleted step
+    if (lastCompletedStep > 0 && lastCompletedStep < TOTAL_STEPS) {
+      setCurrentStep(lastCompletedStep + 1);
+    }
+
+    setHasResumed(true);
+  }, [isInitializing, savedProgress, lastCompletedStep, hasResumed]);
 
   // Step data getters/setters
   function updateBusiness(business: BusinessInfoData) {
@@ -157,8 +239,20 @@ function OnboardingWizard() {
   }
 
   async function saveAndNext() {
-    // Save current step
+    // Clear previous validation errors
+    setValidationErrors([]);
+
+    // Validate current step before saving
     const stepData = getStepData(currentStep);
+    const validation = validateStep(currentStep, stepData);
+
+    if (!validation.valid) {
+      setValidationErrors(validation.errors);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    // Save current step via API
     await completeStep(currentStep, stepData);
 
     // Brief success feedback
@@ -172,6 +266,7 @@ function OnboardingWizard() {
   }
 
   function goBack() {
+    setValidationErrors([]);
     if (currentStep > 1) {
       setCurrentStep((s) => s - 1);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -179,6 +274,7 @@ function OnboardingWizard() {
   }
 
   function goToStep(step: number) {
+    setValidationErrors([]);
     // Binary gate: only allow navigation to completed steps or the next uncompleted step
     const maxAllowed = Math.max(
       1,
@@ -262,6 +358,29 @@ function OnboardingWizard() {
           <Card size="sm" className="bg-destructive/10 ring-destructive/20">
             <CardContent>
               <p className="text-xs text-destructive">{error}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Validation errors */}
+        {validationErrors.length > 0 && (
+          <Card size="sm" className="bg-amber-50 dark:bg-amber-950/20 ring-amber-200 dark:ring-amber-800">
+            <CardContent>
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                    Lütfen aşağıdaki hataları düzeltin:
+                  </p>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    {validationErrors.map((err, i) => (
+                      <li key={i} className="text-[11px] text-amber-700 dark:text-amber-400">
+                        {err}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
             </CardContent>
           </Card>
         )}

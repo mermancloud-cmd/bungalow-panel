@@ -109,7 +109,7 @@ export function StepCancellation({ data, onChange }: StepCancellationProps) {
       </div>
 
       {/* Free cancellation days */}
-      {data.policyType !== "custom" && (
+      {data.policyType !== "custom" ? (
         <Card size="sm">
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between">
@@ -140,13 +140,44 @@ export function StepCancellation({ data, onChange }: StepCancellationProps) {
             </div>
           </CardContent>
         </Card>
+      ) : (
+        <Card size="sm">
+          <CardContent className="space-y-3">
+            <div className="flex items-center gap-2">
+              <CalendarX className="size-4 text-primary" />
+              <Label htmlFor="customFreeDays">Ücretsiz İptal Süresi (gün)</Label>
+            </div>
+            <Input
+              id="customFreeDays"
+              type="number"
+              min={0}
+              max={90}
+              value={data.freeCancellationDays}
+              onChange={(e) => updateField("freeCancellationDays", Math.max(0, parseInt(e.target.value) || 0))}
+            />
+          </CardContent>
+        </Card>
       )}
 
       {/* Refund rules table */}
       <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Percent className="size-4 text-primary" />
-          <Label>İade Kuralları</Label>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Percent className="size-4 text-primary" />
+            <Label>İade Kuralları</Label>
+          </div>
+          {data.policyType === "custom" && (
+            <button
+              type="button"
+              onClick={() => {
+                const newRules = [...data.refundPercentages, { daysBefore: 0, refundPercentage: 0 }];
+                updateField("refundPercentages", newRules);
+              }}
+              className="text-[11px] text-primary font-medium hover:underline"
+            >
+              + Kural Ekle
+            </button>
+          )}
         </div>
 
         <div className="space-y-1.5">
@@ -154,23 +185,73 @@ export function StepCancellation({ data, onChange }: StepCancellationProps) {
             <Card key={index} size="sm">
               <CardContent>
                 <div className="flex items-center gap-3">
-                  <div className="flex-1">
-                    <p className="text-xs font-medium">
-                      {rule.daysBefore > 0
-                        ? `${rule.daysBefore} gün öncesine kadar`
-                        : "Son gün"}
-                    </p>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "text-xs font-semibold",
-                      rule.refundPercentage === 100 && "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
-                      rule.refundPercentage === 0 && "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                    )}
-                  >
-                    %{rule.refundPercentage} iade
-                  </Badge>
+                  {data.policyType === "custom" ? (
+                    <>
+                      <div className="flex items-center gap-1.5 flex-1">
+                        <Input
+                          type="number"
+                          min={0}
+                          max={365}
+                          className="w-16 h-7 text-xs text-center"
+                          value={rule.daysBefore}
+                          onChange={(e) => {
+                            const updated = [...data.refundPercentages];
+                            updated[index] = { ...updated[index], daysBefore: Math.max(0, parseInt(e.target.value) || 0) };
+                            updateField("refundPercentages", updated);
+                          }}
+                        />
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">gün önce</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground">%</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          className="w-16 h-7 text-xs text-center"
+                          value={rule.refundPercentage}
+                          onChange={(e) => {
+                            const updated = [...data.refundPercentages];
+                            updated[index] = { ...updated[index], refundPercentage: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) };
+                            updateField("refundPercentages", updated);
+                          }}
+                        />
+                        <span className="text-xs text-muted-foreground">iade</span>
+                      </div>
+                      {data.refundPercentages.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = data.refundPercentages.filter((_, i) => i !== index);
+                            updateField("refundPercentages", updated);
+                          }}
+                          className="text-xs text-destructive hover:underline shrink-0"
+                        >
+                          Sil
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex-1">
+                        <p className="text-xs font-medium">
+                          {rule.daysBefore > 0
+                            ? `${rule.daysBefore} gün öncesine kadar`
+                            : "Son gün"}
+                        </p>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "text-xs font-semibold",
+                          rule.refundPercentage === 100 && "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+                          rule.refundPercentage === 0 && "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                        )}
+                      >
+                        %{rule.refundPercentage} iade
+                      </Badge>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>

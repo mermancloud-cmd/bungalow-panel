@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useRef, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
-import { Phone, ArrowRight, Loader2, CheckCircle } from "lucide-react";
+import { useState, useRef, useEffect, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Phone, ArrowRight, Loader2, CheckCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { isValidPhone, isValidOTP, sanitizePhone, sanitizeOTP } from "@/lib/auth-utils";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
 
   const [step, setStep] = useState<"phone" | "otp">("phone");
@@ -16,8 +18,40 @@ export default function LoginPage() {
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [rateLimited, setRateLimited] = useState(false);
+  const [retryAfter, setRetryAfter] = useState(0);
 
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Show session expired message
+  useEffect(() => {
+    const reason = searchParams.get("reason");
+    if (reason === "session_expired") {
+      setError("Oturumunuz sona erdi. L\u00fctfen tekrar giri\u015f yap\u0131n.");
+    }
+  }, [searchParams]);
+
+  // Countdown timer for rate limiting
+  useEffect(() => {
+    if (retryAfter <= 0) return;
+    const timer = setInterval(() => {
+      setRetryAfter((prev) => {
+        if (prev <= 1) {
+          setRateLimited(false);
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [retryAfter]);
+
+  function formatRetryAfter(seconds: number): string {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return m > 0 ? `${m}dk ${s}sn` : `${s}sn`;
+  }
 
   // ─── Step 1: Send OTP ────────────────────────────────────────────────────
 
@@ -69,7 +103,7 @@ export default function LoginPage() {
     try {
       const { error: supaError } = await supabase.auth.verifyOtp({
         phone: fullPhone,
-        token: code,
+        token: sanitizeOTP(code),
         type: "sms",
       });
 
@@ -122,6 +156,14 @@ export default function LoginPage() {
         </p>
       </div>
 
+      {/* Rate Limit Banner */}
+      {rateLimited && (
+        <div className="mb-4 flex w-full max-w-sm items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <AlertTriangle className="size-4 shrink-0" />
+          <span>{"\u00c7ok fazla deneme. Tekrar deneyin: "}{formatRetryAfter(retryAfter)}</span>
+        </div>
+      )}
+
       {/* Card */}
       <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-sm">
         {step === "phone" ? (
@@ -158,6 +200,9 @@ export default function LoginPage() {
                       }}
                       className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                       autoFocus
+                      disabled={rateLimited}
+                      maxLength={10}
+                      autoComplete="tel-national"
                     />
                   </div>
                 </div>
@@ -171,7 +216,7 @@ export default function LoginPage() {
                 type="submit"
                 className="w-full"
                 size="lg"
-                disabled={loading || phone.length < 10}
+                disabled={loading || phone.length < 10 || rateLimited}
               >
                 {loading ? (
                   <Loader2 className="mr-2 size-4 animate-spin" />
@@ -212,6 +257,8 @@ export default function LoginPage() {
                       digit ? "border-primary" : "border-border"
                     )}
                     aria-label={`Kod hanesi ${i + 1}`}
+                    disabled={rateLimited}
+                    autoComplete="one-time-code"
                   />
                 ))}
               </div>
@@ -224,7 +271,7 @@ export default function LoginPage() {
                 type="submit"
                 className="w-full"
                 size="lg"
-                disabled={loading || otp.join("").length < 6}
+                disabled={loading || otp.join("").length < 6 || rateLimited}
               >
                 {loading ? (
                   <Loader2 className="mr-2 size-4 animate-spin" />

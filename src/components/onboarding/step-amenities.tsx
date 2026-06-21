@@ -90,6 +90,7 @@ export function StepAmenities({ data, onChange }: StepAmenitiesProps) {
                   <Checkbox
                     checked={isChecked}
                     onCheckedChange={() => toggle(item.key)}
+                    onClick={(e) => e.stopPropagation()}
                   />
                   <div
                     className={cn(
