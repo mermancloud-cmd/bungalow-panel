@@ -2,11 +2,13 @@
 
 import { useState, useRef, useEffect, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Phone, ArrowRight, Loader2, CheckCircle, AlertTriangle } from "lucide-react";
+import { Phone, ArrowRight, Loader2, CheckCircle, AlertTriangle, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { isValidPhone, isValidOTP, sanitizePhone, sanitizeOTP } from "@/lib/auth-utils";
+import { useRateLimiter } from "@/hooks/use-rate-limiter";
+import { toast } from "sonner";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,15 +23,34 @@ export default function LoginPage() {
   const [rateLimited, setRateLimited] = useState(false);
   const [retryAfter, setRetryAfter] = useState(0);
 
+  // Client-side rate limiter: 5 attempts per 60 seconds
+  const rateLimiter = useRateLimiter({
+    maxAttempts: 5,
+    windowMs: 60_000,
+    onLimited: () => {
+      setRateLimited(true);
+      setRetryAfter(60);
+      toast.error("Çok fazla deneme. Lütfen 1 dakika bekleyin.");
+    },
+  });
+
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Show session expired message
   useEffect(() => {
     const reason = searchParams.get("reason");
     if (reason === "session_expired") {
-      setError("Oturumunuz sona erdi. L\u00fctfen tekrar giri\u015f yap\u0131n.");
+      setError("Oturumunuz sona erdi. Lütfen tekrar giriş yapın.");
+    } else if (reason === "unauthorized") {
+      setError("Bu sayfaya erişmek için giriş yapmanız gerekiyor.");
     }
   }, [searchParams]);
+
+  // Sync rate limiter state with local state
+  useEffect(() => {
+    setRateLimited(rateLimiter.isLimited);
+    setRetryAfter(rateLimiter.retryAfter);
+  }, [rateLimiter.isLimited, rateLimiter.retryAfter]);
 
   // Countdown timer for rate limiting
   useEffect(() => {
@@ -59,9 +80,15 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
 
+    // Client-side rate limit check
+    if (!rateLimiter.checkLimit()) {
+      return; // Rate limit toast is already shown by the hook
+    }
+
     const fullPhone = phone.startsWith("+") ? phone : `+90${phone}`;
 
-    if (fullPhone.replace(/\D/g, "").length < 11) {
+    // Validate phone number
+    if (!isValidPhone(phone) && fullPhone.replace(/\D/g, "").length < 11) {
       setError("Lütfen geçerli bir telefon numarası girin.");
       return;
     }
@@ -91,8 +118,13 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
 
+    // Client-side rate limit check for OTP verification too
+    if (!rateLimiter.checkLimit()) {
+      return;
+    }
+
     const code = otp.join("");
-    if (code.length !== 6) {
+    if (code.length !== 6 || !isValidOTP(code)) {
       setError("Lütfen 6 haneli kodu girin.");
       return;
     }
@@ -108,6 +140,8 @@ export default function LoginPage() {
       });
 
       if (supaError) throw supaError;
+      // Reset rate limiter on successful login
+      rateLimiter.reset();
       router.push("/dashboard");
     } catch (err) {
       setError(
@@ -210,6 +244,14 @@ export default function LoginPage() {
 
               {error && (
                 <p className="text-sm text-destructive">{error}</p>
+              )}
+
+              {/* Remaining attempts indicator */}
+              {!rateLimited && rateLimiter.remaining < 5 && (
+                <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Shield className="size-3" />
+                  Kalan deneme: {rateLimiter.remaining}
+                </p>
               )}
 
               <Button
