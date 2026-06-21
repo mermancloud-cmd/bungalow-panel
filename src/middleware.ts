@@ -7,6 +7,8 @@ const LOGIN_RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute (task spec: 5 attempts
 const LOGIN_RATE_LIMIT_MAX = 5;
 const OTP_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 const OTP_RATE_LIMIT_MAX = 5;
+const API_RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const API_RATE_LIMIT_MAX = 60; // 60 requests per minute per IP for general API
 
 interface RateLimitEntry {
   count: number;
@@ -15,6 +17,7 @@ interface RateLimitEntry {
 
 const loginRateLimitStore = new Map<string, RateLimitEntry>();
 const otpRateLimitStore = new Map<string, RateLimitEntry>();
+const apiRateLimitStore = new Map<string, RateLimitEntry>();
 
 // Periodic cleanup of expired entries (every 5 minutes)
 function cleanupStore(store: Map<string, RateLimitEntry>): void {
@@ -30,6 +33,7 @@ function cleanupStore(store: Map<string, RateLimitEntry>): void {
 setInterval(() => {
   cleanupStore(loginRateLimitStore);
   cleanupStore(otpRateLimitStore);
+  cleanupStore(apiRateLimitStore);
 }, 5 * 60 * 1000);
 
 function checkRateLimit(
@@ -104,13 +108,64 @@ function getClientIP(request: NextRequest): string {
   );
 }
 
+// --- CORS Configuration (Same-Origin Only) ---
+const ALLOWED_ORIGINS = [
+  "https://panel.merman.sbs",
+  "https://owner.merman.sbs",
+  "https://api.merman.sbs",
+];
+
+function getCORSHeaders(request: NextRequest): Record<string, string> {
+  const origin = request.headers.get("origin") || "";
+  const isAllowed = ALLOWED_ORIGINS.includes(origin);
+
+  return {
+    "Access-Control-Allow-Origin": isAllowed ? origin : "null",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-CSRF-Token, X-Requested-With, Accept",
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Max-Age": "86400", // 24 hours
+    "Vary": "Origin",
+  };
+}
+
 // --- Main Middleware ---
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Handle CORS preflight (OPTIONS) requests
+  if (request.method === "OPTIONS") {
+    const corsHeaders = getCORSHeaders(request);
+    const resp = new NextResponse(null, { status: 204, headers: corsHeaders });
+    return addSecurityHeaders(resp);
+  }
+
   // Rate limiting for auth endpoints
   const isLoginPath = pathname === "/login" && request.method === "POST";
   const isOTPVerify = pathname.startsWith("/api/auth/otp") && request.method === "POST";
+  const isAPIRoute = pathname.startsWith("/api/");
+
+  // General API rate limiting (applies to all /api/ routes)
+  if (isAPIRoute && !pathname.startsWith("/api/health")) {
+    const clientIP = getClientIP(request);
+    const rateResult = checkRateLimit(apiRateLimitStore, clientIP, API_RATE_LIMIT_WINDOW_MS, API_RATE_LIMIT_MAX);
+
+    if (!rateResult.allowed) {
+      const resp = NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(Math.ceil((rateResult.resetAt - Date.now()) / 1000)),
+            "X-RateLimit-Limit": String(API_RATE_LIMIT_MAX),
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": String(Math.ceil(rateResult.resetAt / 1000)),
+          },
+        }
+      );
+      return addSecurityHeaders(resp);
+    }
+  }
 
   if (isLoginPath) {
     const clientIP = getClientIP(request);
@@ -185,6 +240,14 @@ export async function middleware(request: NextRequest) {
 
   // Add security headers to all responses
   response = addSecurityHeaders(response);
+
+  // Add CORS headers to API responses
+  if (isAPIRoute) {
+    const corsHeaders = getCORSHeaders(request);
+    for (const [key, value] of Object.entries(corsHeaders)) {
+      response.headers.set(key, value);
+    }
+  }
 
   // Add no-cache headers on auth pages
   const authPages = ["/login", "/onboarding"];

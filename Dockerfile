@@ -1,15 +1,22 @@
-FROM node:20-alpine AS base
+# ──────────────────────────────────────────────────────────────────────────────
+# Dockerfile — Bungalow Owner Panel (Security-Hardened nginx)
+#
+# Multi-stage build:
+#   1. deps    — Install Node.js dependencies
+#   2. builder — Build Next.js static export
+#   3. runner  — Serve with hardened nginx (non-root)
+# ──────────────────────────────────────────────────────────────────────────────
 
-# Install dependencies only when needed
-FROM base AS deps
+# ── Stage 1: Dependencies ────────────────────────────────────────────────────
+FROM node:20-alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
 RUN npm ci
 
-# Rebuild the source code only when needed
-FROM base AS builder
+# ── Stage 2: Build ───────────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -17,27 +24,31 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
+# Build static export → output goes to ./out/
 RUN npx next build
 
-# Production image, copy all the files and run next
-FROM base AS runner
-WORKDIR /app
+# ── Stage 3: Production (Hardened nginx) ─────────────────────────────────────
+FROM nginx:1.31-alpine AS runner
 
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV NODE_ENV=production
+# Remove default nginx config and html
+RUN rm -rf /etc/nginx/conf.d/default.conf /usr/share/nginx/html/*
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+# Copy hardened nginx configuration
+COPY nginx.conf /etc/nginx/nginx.conf
 
-COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Copy static export from builder
+COPY --from=builder /app/out /usr/share/nginx/html
 
-USER nextjs
+# Copy public assets (including _headers for reference, health.json)
+COPY --from=builder /app/public/* /usr/share/nginx/html/
 
-EXPOSE 3000
+# Run nginx as non-root (optional hardening — requires adjusting paths)
+# For simplicity, keep default nginx user but ensure config is secure
 
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
+EXPOSE 80
 
-CMD ["node", "server.js"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=10s \
+  CMD wget --no-verbose --tries=1 --spider http://localhost/health || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

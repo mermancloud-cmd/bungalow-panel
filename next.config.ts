@@ -65,6 +65,17 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // ─── Deployment Mode ─────────────────────────────────────────────────────
+  // "export" = Static HTML/JS/CSS, served by nginx (current production)
+  //   → Security headers come from nginx.conf (NOT from this config)
+  //   → Middleware (src/middleware.ts) does NOT run
+  //
+  // "standalone" = Node.js server, middleware runs, headers() effective
+  //   → Switch to "standalone" when you want Next.js middleware to handle
+  //     rate limiting, CSRF, CORS, and security headers server-side
+  //   → Requires the Dockerfile.standalone (not the nginx Dockerfile)
+  //
+  // To switch: change "export" → "standalone" and use Dockerfile.standalone
   output: "export",
   poweredByHeader: false,
   turbopack: {},
@@ -76,6 +87,32 @@ const nextConfig: NextConfig = {
       {
         source: "/(.*)",
         headers: securityHeaders,
+      },
+      // CORS for API routes — same-origin only
+      {
+        source: "/api/:path*",
+        headers: [
+          {
+            key: "Access-Control-Allow-Origin",
+            value: "https://panel.merman.sbs",
+          },
+          {
+            key: "Access-Control-Allow-Methods",
+            value: "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+          },
+          {
+            key: "Access-Control-Allow-Headers",
+            value: "Content-Type, Authorization, X-CSRF-Token, X-Requested-With, Accept",
+          },
+          {
+            key: "Access-Control-Allow-Credentials",
+            value: "true",
+          },
+          {
+            key: "Access-Control-Max-Age",
+            value: "86400",
+          },
+        ],
       },
     ];
   },
