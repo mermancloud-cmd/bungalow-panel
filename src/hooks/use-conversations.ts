@@ -3,10 +3,14 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/lib/auth-context'
 
 // Re-export types for components that import from this hook
-export type { ConversationState, Conversation } from '@/lib/types'
+export type { ConversationState } from '@/lib/types'
+export type { Conversation as ConversationUI } from '@/lib/types'
 export type { MessageRole } from '@/lib/types'
 
-interface Conversation {
+/** Display-level state for conversation filter tabs and badges. */
+export type ConversationDisplayState = 'active' | 'closed' | 'pending' | 'taken_over'
+
+export interface Conversation {
   id: string
   tenant_id: string
   guest_name: string | null
@@ -19,6 +23,18 @@ interface Conversation {
   language: string
   created_at: string
   updated_at: string
+}
+
+/**
+ * Derive the display state for a conversation.
+ * When a human has taken over (assigned_agent === 'human'), the display state
+ * is 'taken_over' regardless of the underlying DB state.
+ */
+export function getConversationDisplayState(
+  conv: { state?: string; assigned_agent?: string | null }
+): ConversationDisplayState {
+  if (conv.assigned_agent === 'human') return 'taken_over'
+  return (conv.state ?? 'active') as ConversationDisplayState
 }
 
 interface Message {
@@ -146,6 +162,82 @@ export function useHandoff() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversations'] })
       queryClient.invalidateQueries({ queryKey: ['conversation'] })
+    },
+  })
+}
+
+export function useSendMessage() {
+  const queryClient = useQueryClient()
+  const { tenant } = useAuth()
+  const supabase = createClient()
+
+  return useMutation({
+    mutationFn: async ({
+      conversationId,
+      content,
+    }: {
+      conversationId: string
+      content: string
+    }) => {
+      const { data, error } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: conversationId,
+          sender: 'agent' as const,
+          content,
+          metadata: null,
+        })
+        .select()
+        .single()
+
+      if (error) throw new Error(error.message)
+      return data as unknown as Message
+    },
+    onMutate: async ({ conversationId, content }) => {
+      // Cancel outgoing refetches so they don't overwrite our optimistic update
+      await queryClient.cancelQueries({ queryKey: ['conversation', conversationId] })
+
+      // Snapshot previous cache for rollback
+      const previous = queryClient.getQueryData<ConversationDetail>([
+        'conversation',
+        conversationId,
+        tenant?.id,
+      ])
+
+      // Optimistically append the new message
+      if (previous) {
+        const optimisticMessage: Message = {
+          id: `optimistic-${Date.now()}`,
+          conversation_id: conversationId,
+          sender: 'agent',
+          content,
+          created_at: new Date().toISOString(),
+          metadata: null,
+        }
+
+        queryClient.setQueryData<ConversationDetail>(
+          ['conversation', conversationId, tenant?.id],
+          {
+            ...previous,
+            messages: [...previous.messages, optimisticMessage],
+          }
+        )
+      }
+
+      return { previous }
+    },
+    onError: (_err, { conversationId }, context) => {
+      // Rollback to the previous cache snapshot
+      if (context?.previous) {
+        queryClient.setQueryData(
+          ['conversation', conversationId, tenant?.id],
+          context.previous
+        )
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversation'] })
+      queryClient.invalidateQueries({ queryKey: ['conversations'] })
     },
   })
 }

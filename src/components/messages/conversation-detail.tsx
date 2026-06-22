@@ -10,7 +10,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MessageBubble } from "@/components/messages/message-bubble";
-import { useConversation } from "@/hooks/use-conversations";
+import { useConversation, useHandoff, useSendMessage } from "@/hooks/use-conversations";
+import type { ConversationDisplayState } from "@/hooks/use-conversations";
+import { getConversationDisplayState } from "@/hooks/use-conversations";
 import {
   HandMetal,
   Bot,
@@ -20,9 +22,7 @@ import {
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 
-type ConversationViewState = "active" | "pending" | "taken_over" | "closed";
-
-const stateLabels: Record<ConversationViewState, { label: string; className: string }> = {
+const stateLabels: Record<ConversationDisplayState, { label: string; className: string }> = {
   active: { label: "AI Yönetiyor", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
   pending: { label: "Bekliyor", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
   taken_over: { label: "Devralındı", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
@@ -41,29 +41,47 @@ export function ConversationDetail({
   onOpenChange,
 }: ConversationDetailProps) {
   const { data, isLoading } = useConversation(conversationId as string);
-  const [localState, setLocalState] = useState<ConversationViewState | null>(null);
+  const [localState, setLocalState] = useState<ConversationDisplayState | null>(null);
   const [messageText, setMessageText] = useState("");
+  const handoff = useHandoff();
+  const sendMessage = useSendMessage();
 
   // Flatten the data shape for easier access
   const conv = data?.conversation;
   const messages = data?.messages ?? [];
   const guestName = conv?.guest_name ?? "Konuşma";
   const guestPhone = conv?.guest_phone ?? "";
-  const currentState = localState ?? (conv?.state as ConversationViewState) ?? "active";
+  const currentState = localState ?? (conv ? getConversationDisplayState(conv) : "active");
   const stateInfo = stateLabels[currentState];
 
   const handleTakeOver = () => {
-    setLocalState("taken_over");
+    if (!conversationId) return;
+    const previousState = currentState;
+    setLocalState("taken_over"); // optimistic
+    handoff.mutate(
+      { conversationId, action: "takeover" },
+      { onError: () => setLocalState(previousState as ConversationDisplayState) }
+    );
   };
 
   const handleReturnToAI = () => {
-    setLocalState("active");
+    if (!conversationId) return;
+    const previousState = currentState;
+    setLocalState("active"); // optimistic
+    handoff.mutate(
+      { conversationId, action: "return_to_ai" },
+      { onError: () => setLocalState(previousState as ConversationDisplayState) }
+    );
   };
 
   const handleSend = () => {
-    if (!messageText.trim()) return;
-    // TODO: Send message via API
+    if (!messageText.trim() || !conversationId) return;
+    const text = messageText.trim();
     setMessageText("");
+    sendMessage.mutate(
+      { conversationId, content: text },
+      { onError: () => setMessageText(text) } // restore input on failure
+    );
   };
 
   return (
