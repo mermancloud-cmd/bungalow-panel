@@ -21,11 +21,11 @@ const filterTabs: { value: ConversationFilter; label: string }[] = [
 export default function MessagesPage() {
   const [isMounted, setIsMounted] = React.useState(false);
   React.useEffect(() => { setIsMounted(true); }, []);
-  if (!isMounted) return null;
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState<ConversationFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  if (!isMounted) return null;
 
   const handleSelect = (id: string) => {
     setSelectedId(id);

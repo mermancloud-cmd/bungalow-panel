@@ -51,6 +51,8 @@ export interface Conversation {
   handler: AIHandler;
   lastMessage: string;
   lastMessageAt: string;
+  state: string;
+  assigned_agent: string | null;
 }
 
 export interface AIPersona {

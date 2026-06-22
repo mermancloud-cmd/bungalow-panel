@@ -2,18 +2,17 @@
 
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import type { Conversation, ConversationState } from "@/hooks/use-conversations";
-import { useConversations } from "@/hooks/use-conversations";
-import { Search, MessageCircle, InboxIcon } from "lucide-react";
+import type { Conversation, ConversationDisplayState } from "@/hooks/use-conversations";
+import { useConversations, getConversationDisplayState } from "@/hooks/use-conversations";
+import { InboxIcon } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { tr } from "date-fns/locale";
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const stateConfig: Record<
-  ConversationState,
+  ConversationDisplayState,
   { label: string; className: string }
 > = {
   active: {
@@ -51,15 +50,16 @@ export function ConversationList({
   onSelect,
   selectedId,
 }: ConversationListProps) {
-  const { data: conversations, isLoading } = useConversations();
+  const { data, isLoading } = useConversations();
+  const conversations = data?.conversations ?? [];
 
   const filtered = useMemo(() => {
-    if (!conversations) return [];
+    if (!conversations.length) return [];
     let list = conversations;
 
-    // Filter by state
+    // Filter by display state (derived from DB state + assigned_agent)
     if (filter !== "all") {
-      list = list.filter((c) => c.state === filter);
+      list = list.filter((c) => getConversationDisplayState(c) === filter);
     }
 
     // Filter by search query
@@ -67,8 +67,8 @@ export function ConversationList({
       const q = searchQuery.toLowerCase();
       list = list.filter(
         (c) =>
-          c.guestPhone.toLowerCase().includes(q) ||
-          c.guestName.toLowerCase().includes(q)
+          (c.guest_phone ?? "").toLowerCase().includes(q) ||
+          (c.guest_name ?? "").toLowerCase().includes(q)
       );
     }
 
@@ -130,8 +130,9 @@ function ConversationRow({
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const { label, className } = stateConfig[conversation.state];
-  const timeAgo = formatDistanceToNow(new Date(conversation.lastMessageAt), {
+  const displayState = getConversationDisplayState(conversation);
+  const { label, className } = stateConfig[displayState];
+  const timeAgo = formatDistanceToNow(new Date(conversation.last_message_at), {
     addSuffix: true,
     locale: tr,
   });
@@ -147,14 +148,14 @@ function ConversationRow({
     >
       {/* Avatar */}
       <div className="relative flex size-10 shrink-0 items-center justify-center rounded-full bg-teal-100 text-sm font-semibold text-teal-700">
-        {conversation.guestName
+        {(conversation.guest_name ?? "")
           .split(" ")
           .map((n) => n[0])
           .join("")
           .slice(0, 2)}
-        {conversation.unreadCount > 0 && (
+        {(conversation.unread_count ?? 0) > 0 && (
           <span className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-teal-600 text-[10px] font-bold text-white">
-            {conversation.unreadCount}
+            {conversation.unread_count}
           </span>
         )}
       </div>
@@ -163,7 +164,7 @@ function ConversationRow({
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-medium truncate">
-            {conversation.guestName}
+            {conversation.guest_name}
           </span>
           <span className="shrink-0 text-[10px] text-muted-foreground">
             {timeAgo}
@@ -171,7 +172,7 @@ function ConversationRow({
         </div>
         <div className="flex items-center justify-between gap-2">
           <span className="truncate text-xs text-muted-foreground">
-            {conversation.lastMessage}
+            {conversation.last_message}
           </span>
           <Badge
             variant="secondary"
@@ -181,7 +182,7 @@ function ConversationRow({
           </Badge>
         </div>
         <span className="text-[10px] text-muted-foreground/70">
-          {conversation.guestPhone} · {conversation.bungalowName}
+          {conversation.guest_phone}{conversation.bungalow_name ? ` · ${conversation.bungalow_name}` : ""}
         </span>
       </div>
     </button>

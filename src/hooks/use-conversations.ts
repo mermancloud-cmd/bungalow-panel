@@ -23,6 +23,10 @@ export interface Conversation {
   language: string
   created_at: string
   updated_at: string
+  // Display-only fields (populated via joins or views)
+  last_message?: string
+  unread_count?: number
+  bungalow_name?: string
 }
 
 /**

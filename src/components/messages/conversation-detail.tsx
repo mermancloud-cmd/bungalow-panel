@@ -18,6 +18,7 @@ import {
   Bot,
   Send,
   Phone,
+  Loader2,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -153,8 +154,13 @@ export function ConversationDetail({
                 size="sm"
                 className="flex-1 text-xs"
                 onClick={handleTakeOver}
+                disabled={handoff.isPending}
               >
-                <HandMetal className="size-3.5" />
+                {handoff.isPending ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <HandMetal className="size-3.5" />
+                )}
                 Devral
               </Button>
             ) : (
@@ -163,8 +169,13 @@ export function ConversationDetail({
                 size="sm"
                 className="flex-1 text-xs"
                 onClick={handleReturnToAI}
+                disabled={handoff.isPending}
               >
-                <Bot className="size-3.5" />
+                {handoff.isPending ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Bot className="size-3.5" />
+                )}
                 AI&apos;a Geri Ver
               </Button>
             )}
@@ -189,9 +200,13 @@ export function ConversationDetail({
               size="icon-sm"
               className="rounded-full bg-teal-600 hover:bg-teal-700 text-white"
               onClick={handleSend}
-              disabled={!messageText.trim()}
+              disabled={!messageText.trim() || sendMessage.isPending}
             >
-              <Send className="size-3.5" />
+              {sendMessage.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Send className="size-3.5" />
+              )}
             </Button>
           </div>
         </SheetFooter>

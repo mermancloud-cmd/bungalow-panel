@@ -15,11 +15,11 @@ type ViewMode = "list" | "calendar";
 export default function ReservationsPage() {
   const [isMounted, setIsMounted] = React.useState(false);
   React.useEffect(() => { setIsMounted(true); }, []);
-  if (!isMounted) return null;
   const [viewMode, setViewMode] = React.useState<ViewMode>("list");
   const [selectedReservation, setSelectedReservation] =
     React.useState<Reservation | null>(null);
   const [detailOpen, setDetailOpen] = React.useState(false);
+  if (!isMounted) return null;
 
   const handleSelectReservation = (reservation: Reservation) => {
     setSelectedReservation(reservation);
