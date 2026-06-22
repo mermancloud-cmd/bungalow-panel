@@ -347,6 +347,16 @@ export const mockIyzicoSubscription: IyzicoSubscription = {
 
 // ─── Analytics Data ────────────────────────────────────────────────────────────
 
+export interface RecentFeedbackItem {
+  id: string;
+  guest_name: string | null;
+  guest_phone: string | null;
+  rating: number;
+  feedback_text: string | null;
+  category_tags: string[];
+  created_at: string;
+}
+
 export interface AnalyticsData {
   responseTime: {
     avg_seconds: number
@@ -367,6 +377,7 @@ export interface AnalyticsData {
     trend: { week: string; rate: number }[]
     funnel: { stage: string; count: number; rate: number }[]
   }
+  recentFeedback?: RecentFeedbackItem[]
 }
 
 export const mockAnalytics: AnalyticsData = {

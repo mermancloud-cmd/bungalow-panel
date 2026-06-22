@@ -102,6 +102,22 @@ export interface Database {
         Insert: Database['public']['Tables']['user_profiles']['Row']
         Update: Partial<Database['public']['Tables']['user_profiles']['Insert']>
       }
+      guest_satisfaction_surveys: {
+        Row: {
+          id: string
+          tenant_id: string
+          conversation_id: string | null
+          guest_name: string | null
+          guest_phone: string | null
+          rating: number
+          feedback_text: string | null
+          category_tags: string[]
+          submitted_at: string
+          created_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['guest_satisfaction_surveys']['Row'], 'id' | 'created_at' | 'submitted_at'>
+        Update: Partial<Database['public']['Tables']['guest_satisfaction_surveys']['Insert']>
+      }
     }
   }
 }

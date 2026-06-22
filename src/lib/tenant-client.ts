@@ -46,6 +46,7 @@ export const TENANT_SCOPED_TABLES = [
   "ai_settings",
   "push_subscriptions",
   "analytics_events",
+  "guest_satisfaction_surveys",
 ] as const;
 
 export type TenantScopedTable = (typeof TENANT_SCOPED_TABLES)[number];
